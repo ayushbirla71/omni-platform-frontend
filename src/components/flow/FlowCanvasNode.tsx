@@ -182,9 +182,17 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
 
         {node.type === 'template' && (
           <div className="space-y-1">
-            <p className="font-semibold text-emerald-950 font-mono text-[11px] truncate">
-              {node.templateName}
-            </p>
+            <div className="flex items-center gap-1">
+              <span className="font-semibold text-emerald-950 font-mono text-[11px] truncate">
+                {node.templateName}
+              </span>
+            </div>
+            {node.headerType && (
+              <div className="text-[10px] text-emerald-800 bg-emerald-50/80 px-1.5 py-0.5 rounded flex items-center gap-1 font-medium">
+                <span>{node.headerType === 'TEXT' ? '🔤' : '🖼️'} Header: {node.headerType}</span>
+                {node.headerValue && <span className="text-[9px] text-gray-500 truncate max-w-[110px]">({node.headerValue})</span>}
+              </div>
+            )}
             <p className="text-[10px] text-gray-500">
               Lang: {node.language || 'en_US'} • {node.buttons?.length || 0} buttons
             </p>

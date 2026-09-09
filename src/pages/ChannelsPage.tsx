@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Radio,
   Plus,
@@ -13,6 +13,9 @@ import {
   AlertCircle,
   HelpCircle,
   RefreshCw,
+  Zap,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { channelsApi, whatsappOnboardingApi, flowsApi } from '../api';
 import type {
@@ -31,12 +34,21 @@ import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
 
+declare global {
+  interface Window {
+    FB?: any;
+    fbAsyncInit?: () => void;
+  }
+}
+
 export const ChannelsPage: React.FC = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [config, setConfig] = useState<WhatsAppOnboardingConfig | null>(null);
   const [capacity, setCapacity] = useState<OnboardingCapacity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFbSdkLoaded, setIsFbSdkLoaded] = useState(false);
+  const [isLaunchingFb, setIsLaunchingFb] = useState(false);
 
   // Modals
   const [isEmbeddedModalOpen, setIsEmbeddedModalOpen] = useState(false);
@@ -105,6 +117,154 @@ export const ChannelsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Initialize and load Facebook JavaScript SDK
+  useEffect(() => {
+    if (!config?.appId) return;
+
+    if (window.FB) {
+      try {
+        window.FB.init({
+          appId: config.appId,
+          cookie: true,
+          xfbml: true,
+          version: 'v21.0',
+        });
+        setIsFbSdkLoaded(true);
+      } catch (err) {
+        console.error('Failed to init FB SDK:', err);
+      }
+      return;
+    }
+
+    window.fbAsyncInit = function () {
+      window.FB.init({
+        appId: config.appId,
+        cookie: true,
+        xfbml: true,
+        version: 'v21.0',
+      });
+      setIsFbSdkLoaded(true);
+    };
+
+    const scriptId = 'facebook-jssdk';
+    if (!document.getElementById(scriptId)) {
+      const js = document.createElement('script');
+      js.id = scriptId;
+      js.src = 'https://connect.facebook.net/en_US/sdk.js';
+      js.async = true;
+      js.defer = true;
+      js.onload = () => {
+        if (window.FB) {
+          try {
+            window.FB.init({
+              appId: config.appId,
+              cookie: true,
+              xfbml: true,
+              version: 'v21.0',
+            });
+            setIsFbSdkLoaded(true);
+          } catch (e) {
+            console.error('FB init error:', e);
+          }
+        }
+      };
+      document.body.appendChild(js);
+    }
+  }, [config?.appId]);
+
+  // Listen to postMessage from Meta Embedded Signup popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Allow only facebook origin events
+      if (
+        typeof event.origin === 'string' &&
+        !event.origin.includes('facebook.com') &&
+        !event.origin.includes('meta.com')
+      ) {
+        return;
+      }
+
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (
+          data &&
+          (data.type === 'WA_EMBEDDED_SIGNUP' ||
+            data.event === 'FINISH' ||
+            data.event === 'finish')
+        ) {
+          console.log('[Meta Embedded Signup] postMessage event:', data);
+          const signupData = data.data || data;
+          const phoneId = signupData.phone_number_id || signupData.phoneNumberId;
+          const wabaId = signupData.waba_id || signupData.wabaId;
+
+          if (phoneId || wabaId) {
+            setEmbeddedForm((prev) => ({
+              ...prev,
+              phoneNumberId: phoneId ? String(phoneId) : prev.phoneNumberId,
+              wabaId: wabaId ? String(wabaId) : prev.wabaId,
+            }));
+            showToast('WhatsApp Account & Phone Number received from Meta!', 'success');
+          }
+        }
+      } catch (e) {
+        // Non-JSON message, ignore
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [showToast]);
+
+  // Launch official Meta Embedded Signup popup
+  const launchEmbeddedSignup = () => {
+    if (!config?.configId) {
+      showToast('Meta Configuration ID is not configured in backend/.env', 'error');
+      return;
+    }
+
+    if (!window.FB) {
+      showToast('Meta Facebook SDK is still loading. Please try again in a few seconds.', 'info');
+      return;
+    }
+
+    setIsLaunchingFb(true);
+
+    try {
+      window.FB.login(
+        (response: any) => {
+          setIsLaunchingFb(false);
+          console.log('[Meta FB.login response]:', response);
+
+          if (response?.authResponse?.code) {
+            const authCode = response.authResponse.code;
+            setEmbeddedForm((prev) => ({
+              ...prev,
+              code: authCode,
+            }));
+            showToast('Meta Authorization Code captured successfully!', 'success');
+          } else {
+            console.warn('[Meta FB.login] User did not complete login or cancelled:', response);
+          }
+        },
+        {
+          config_id: config.configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType: '',
+            sessionInfoVersion: '2',
+          },
+        }
+      );
+    } catch (err: any) {
+      setIsLaunchingFb(false);
+      showToast(err?.message || 'Failed to open Meta signup popup', 'error');
+    }
+  };
 
   // Handle Set Default Flow
   const handleSetDefaultFlow = async (channelId: string, flowId: string) => {
@@ -402,20 +562,60 @@ export const ChannelsPage: React.FC = () => {
         isOpen={isEmbeddedModalOpen}
         onClose={() => setIsEmbeddedModalOpen(false)}
         title="Connect WhatsApp via Meta Embedded Signup"
-        description="One-click official Tech Provider onboarding"
+        description="One-click official Meta Tech Provider onboarding"
         maxWidth="lg"
       >
         <div className="space-y-5">
-          <div className="p-4 rounded-xl bg-primary-50/80 border border-primary-100 text-xs text-primary-900 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-primary-950">
-              <Sparkles className="w-4 h-4 text-primary-600" />
-              Official Meta Tech Provider Onboarding Flow
+          {/* Status Banner */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-primary-50 to-blue-50/60 border border-primary-200/80 text-xs text-primary-950 space-y-3 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-primary-950">
+                <Sparkles className="w-4 h-4 text-primary-600" />
+                Official Meta Tech Provider Onboarding Flow
+              </div>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                  isFbSdkLoaded
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isFbSdkLoaded ? 'bg-emerald-600 animate-pulse' : 'bg-amber-500'
+                  }`}
+                />
+                {isFbSdkLoaded ? 'Meta SDK Ready' : 'Loading SDK...'}
+              </span>
             </div>
-            <p>
-              In production, clicking this launches Meta's official <code>FB.login()</code> popup with your
-              Configuration ID (<code>{config?.configId || 'Configured in backend'}</code>). The client selects their
-              WABA and phone number, and Meta hands back the authorization code.
+
+            <p className="text-gray-700 leading-relaxed">
+              Click the button below to launch Meta's official <code>FB.login()</code> popup with your
+              Config ID (<code>{config?.configId || '1747639973210277'}</code>). The client selects their Meta Business Account, WABA, and phone number. When finished, the authorization details autofill below.
             </p>
+
+            <div className="pt-1 flex flex-col sm:flex-row items-center gap-2">
+              <button
+                type="button"
+                onClick={launchEmbeddedSignup}
+                disabled={isLaunchingFb}
+                className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl font-bold text-sm text-white bg-[#1877F2] hover:bg-[#166fe5] shadow-md hover:shadow-lg transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              >
+                {isLaunchingFb ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Opening Meta Popup...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                    </svg>
+                    Launch Meta Embedded Signup
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleEmbeddedSubmit} className="space-y-4">
@@ -427,37 +627,66 @@ export const ChannelsPage: React.FC = () => {
               required
             />
 
-            <Input
-              label="Authorization Code"
-              placeholder="Returned by Meta Embedded Signup SDK"
-              value={embeddedForm.code}
-              onChange={(e) => setEmbeddedForm({ ...embeddedForm, code: e.target.value })}
-              required
-            />
-
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
               <Input
-                label="WhatsApp Business Account (WABA ID)"
-                placeholder="e.g. 1029384756"
-                value={embeddedForm.wabaId}
-                onChange={(e) => setEmbeddedForm({ ...embeddedForm, wabaId: e.target.value })}
+                label="Authorization Code"
+                placeholder="Autofilled by Meta SDK or enter manually"
+                value={embeddedForm.code}
+                onChange={(e) => setEmbeddedForm({ ...embeddedForm, code: e.target.value })}
                 required
               />
+              {embeddedForm.code && (
+                <p className="text-[10px] text-emerald-700 flex items-center gap-1 font-medium">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  Code received from Meta SDK
+                </p>
+              )}
+            </div>
 
-              <Input
-                label="Phone Number ID"
-                placeholder="e.g. 9876543210"
-                value={embeddedForm.phoneNumberId}
-                onChange={(e) => setEmbeddedForm({ ...embeddedForm, phoneNumberId: e.target.value })}
-                required
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Input
+                  label="WhatsApp Business Account (WABA ID)"
+                  placeholder="e.g. 1029384756"
+                  value={embeddedForm.wabaId}
+                  onChange={(e) => setEmbeddedForm({ ...embeddedForm, wabaId: e.target.value })}
+                  required
+                />
+                {embeddedForm.wabaId && (
+                  <p className="text-[10px] text-emerald-700 flex items-center gap-1 font-medium">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    WABA ID captured
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Input
+                  label="Phone Number ID"
+                  placeholder="e.g. 9876543210"
+                  value={embeddedForm.phoneNumberId}
+                  onChange={(e) => setEmbeddedForm({ ...embeddedForm, phoneNumberId: e.target.value })}
+                  required
+                />
+                {embeddedForm.phoneNumberId && (
+                  <p className="text-[10px] text-emerald-700 flex items-center gap-1 font-medium">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    Phone ID captured
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" type="button" onClick={() => setIsEmbeddedModalOpen(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" type="submit" isLoading={isSubmittingEmbedded}>
+              <Button
+                variant="primary"
+                type="submit"
+                isLoading={isSubmittingEmbedded}
+                disabled={!embeddedForm.code || !embeddedForm.wabaId || !embeddedForm.phoneNumberId}
+              >
                 Complete Embedded Onboarding
               </Button>
             </div>

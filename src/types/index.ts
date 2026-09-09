@@ -230,6 +230,8 @@ export interface TemplateNode {
   templateName: string;
   language?: string;
   templateParams?: Record<string, string>;
+  headerType?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
+  headerValue?: string;
   buttons?: TemplateButtonAction[];
   waitForDelivery?: boolean;
   onDelivered?: string;

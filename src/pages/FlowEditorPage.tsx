@@ -29,6 +29,17 @@ import {
   MousePointerClick,
   FileText,
   Flag,
+  Image as ImageIcon,
+  Video,
+  File,
+  RefreshCw,
+  HelpCircle,
+  XCircle,
+  CheckCheck,
+  Globe,
+  Info,
+  Smartphone,
+  ExternalLink,
 } from 'lucide-react';
 import { flowsApi, channelsApi } from '../api';
 import type {
@@ -44,6 +55,7 @@ import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
+import { Badge } from '../components/common/Badge';
 import { FlowCanvasNode, FlowNodeData } from '../components/flow/FlowCanvasNode';
 import { FlowCustomEdge } from '../components/flow/FlowCustomEdge';
 import { FlowToolbar } from '../components/flow/FlowToolbar';
@@ -75,8 +87,9 @@ const FlowEditorCanvas: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
-  // Available WhatsApp templates for template node dropdown
+  // Available WhatsApp templates from connected active channels
   const [availableTemplates, setAvailableTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
   // React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
@@ -93,7 +106,7 @@ const FlowEditorCanvas: React.FC = () => {
   const [editingNodeId, setEditingNodeId] = useState('');
   const [nodeType, setNodeType] = useState<FlowNodeType>('message');
 
-  // Form fields
+  // Form fields: Message / Input / Action / Wait / Condition
   const [nodeText, setNodeText] = useState('');
   const [nodePrompt, setNodePrompt] = useState('');
   const [nodeSaveAs, setNodeSaveAs] = useState('');
@@ -111,12 +124,24 @@ const FlowEditorCanvas: React.FC = () => {
   ]);
   const [conditionDefault, setConditionDefault] = useState('');
 
-  // Template Form fields
+  // WhatsApp Template Form fields
   const [templateName, setTemplateName] = useState('');
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
+  const [templateHeaderType, setTemplateHeaderType] = useState<'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO' | undefined>();
+  const [templateHeaderValue, setTemplateHeaderValue] = useState('');
   const [templateParams, setTemplateParams] = useState<Array<{ key: string; value: string }>>([]);
   const [templateButtons, setTemplateButtons] = useState<Array<{ buttonText: string; next: string }>>([]);
   const [templateSaveAs, setTemplateSaveAs] = useState('');
+
+  // Filter available templates strictly to APPROVED templates from Meta
+  const approvedTemplates = useMemo(() => {
+    return availableTemplates.filter((t) => t.status === 'APPROVED');
+  }, [availableTemplates]);
+
+  // Selected template object from Meta catalog
+  const selectedMetaTemplate = useMemo(() => {
+    return availableTemplates.find((t) => t.name === templateName);
+  }, [availableTemplates, templateName]);
 
   // Push state to Undo/Redo history
   const pushHistory = useCallback((currentNodes: FlowNode[], currentEdges: Edge[], entryId: string) => {
@@ -162,96 +187,98 @@ const FlowEditorCanvas: React.FC = () => {
         };
       });
 
-    // Generate edges from node connections
-    rawNodes.forEach((n) => {
-      // 1. Message & Template Delivered / Failed / Continue
-      if (n.type === 'message' || n.type === 'template') {
-        if (n.onDelivered) {
-          generatedEdges.push({
-            id: `e-${n.id}-delivered-${n.onDelivered}`,
-            source: n.id,
-            sourceHandle: 'delivered',
-            target: n.onDelivered,
-            type: 'custom',
-            label: 'Delivered',
-          });
+      // Generate edges from node connections
+      rawNodes.forEach((n) => {
+        // 1. Message & Template Delivered / Failed / Continue
+        if (n.type === 'message' || n.type === 'template') {
+          if (n.onDelivered) {
+            generatedEdges.push({
+              id: `e-${n.id}-delivered-${n.onDelivered}`,
+              source: n.id,
+              sourceHandle: 'delivered',
+              target: n.onDelivered,
+              type: 'custom',
+              label: 'Delivered',
+            });
+          }
+          if (n.onFailed) {
+            generatedEdges.push({
+              id: `e-${n.id}-failed-${n.onFailed}`,
+              source: n.id,
+              sourceHandle: 'failed',
+              target: n.onFailed,
+              type: 'custom',
+              label: 'Failed',
+            });
+          }
+          if (n.next) {
+            generatedEdges.push({
+              id: `e-${n.id}-continue-${n.next}`,
+              source: n.id,
+              sourceHandle: 'continue',
+              target: n.next,
+              type: 'custom',
+              label: 'Continue',
+            });
+          }
+          if (n.type === 'template' && n.buttons) {
+            n.buttons.forEach((btn, bIdx) => {
+              if (btn.next) {
+                generatedEdges.push({
+                  id: `e-${n.id}-btn-${bIdx}-${btn.next}`,
+                  source: n.id,
+                  sourceHandle: `btn_${bIdx}`,
+                  target: btn.next,
+                  type: 'custom',
+                  label: `"${btn.buttonText}"`,
+                });
+              }
+            });
+          }
         }
-        if (n.onFailed) {
-          generatedEdges.push({
-            id: `e-${n.id}-failed-${n.onFailed}`,
-            source: n.id,
-            sourceHandle: 'failed',
-            target: n.onFailed,
-            type: 'custom',
-            label: 'Failed',
+
+        // 2. Condition branches
+        if (n.type === 'condition') {
+          n.branches?.forEach((b, bIdx) => {
+            if (b.next) {
+              generatedEdges.push({
+                id: `e-${n.id}-branch-${bIdx}-${b.next}`,
+                source: n.id,
+                sourceHandle: `branch_${bIdx}`,
+                target: b.next,
+                type: 'custom',
+                label: `== "${b.equals}"`,
+              });
+            }
           });
+          if (n.default) {
+            generatedEdges.push({
+              id: `e-${n.id}-default-${n.default}`,
+              source: n.id,
+              sourceHandle: 'default',
+              target: n.default,
+              type: 'custom',
+              label: 'Default',
+            });
+          }
         }
-        if (n.next) {
+
+        // 3. Wait / Input / Action
+        if ((n.type === 'wait' || n.type === 'input' || n.type === 'action') && n.next) {
           generatedEdges.push({
             id: `e-${n.id}-continue-${n.next}`,
             source: n.id,
             sourceHandle: 'continue',
             target: n.next,
             type: 'custom',
-            label: 'Continue',
           });
         }
-        if (n.type === 'template' && n.buttons) {
-          n.buttons.forEach((btn, bIdx) => {
-            if (btn.next) {
-              generatedEdges.push({
-                id: `e-${n.id}-btn-${bIdx}-${btn.next}`,
-                source: n.id,
-                sourceHandle: `btn_${bIdx}`,
-                target: btn.next,
-                type: 'custom',
-                label: `"${btn.buttonText}"`,
-              });
-            }
-          });
-        }
-      }
+      });
 
-      // 2. Condition branches
-      if (n.type === 'condition') {
-        n.branches?.forEach((b, bIdx) => {
-          if (b.next) {
-            generatedEdges.push({
-              id: `e-${n.id}-branch-${bIdx}-${b.next}`,
-              source: n.id,
-              sourceHandle: `branch_${bIdx}`,
-              target: b.next,
-              type: 'custom',
-              label: `== "${b.equals}"`,
-            });
-          }
-        });
-        if (n.default) {
-          generatedEdges.push({
-            id: `e-${n.id}-default-${n.default}`,
-            source: n.id,
-            sourceHandle: 'default',
-            target: n.default,
-            type: 'custom',
-            label: 'Default',
-          });
-        }
-      }
-
-      // 3. Wait / Input / Action
-      if ((n.type === 'wait' || n.type === 'input' || n.type === 'action') && n.next) {
-        generatedEdges.push({
-          id: `e-${n.id}-continue-${n.next}`,
-          source: n.id,
-          sourceHandle: 'continue',
-          target: n.next,
-          type: 'custom',
-        });
-      }
-    });
-
-    return { flowNodes, generatedEdges, entryId };
-  }, []);
+      return { flowNodes, generatedEdges, entryId };
+    },
+    []
+  );
 
   // Serialize React Flow canvas state back to backend FlowDefinition
   const serializeGraph = useCallback((): FlowDefinition => {
@@ -305,6 +332,29 @@ const FlowEditorCanvas: React.FC = () => {
     };
   }, [nodes, edges, entryNodeId]);
 
+  // Fetch WhatsApp Templates from all connected WhatsApp channels
+  const loadAvailableTemplates = useCallback(async () => {
+    setIsLoadingTemplates(true);
+    try {
+      const channels = await channelsApi.list();
+      const waChannels = channels.filter((c: Channel) => c.type === 'whatsapp' && c.status === 'active');
+      const allTemplates: WhatsAppTemplate[] = [];
+      for (const ch of waChannels) {
+        try {
+          const tpls = await channelsApi.getTemplates(ch.id);
+          allTemplates.push(...tpls);
+        } catch {
+          // Non-fatal
+        }
+      }
+      setAvailableTemplates(allTemplates);
+    } catch {
+      // Non-fatal
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  }, []);
+
   // Open Edit Node Modal
   const handleOpenEdit = useCallback((targetNode: FlowNode) => {
     setIsNewNode(false);
@@ -328,6 +378,8 @@ const FlowEditorCanvas: React.FC = () => {
     if (targetNode.type === 'template') {
       setTemplateName(targetNode.templateName || '');
       setTemplateLanguage(targetNode.language || 'en_US');
+      setTemplateHeaderType(targetNode.headerType);
+      setTemplateHeaderValue(targetNode.headerValue || '');
       setTemplateParams(
         targetNode.templateParams
           ? Object.entries(targetNode.templateParams).map(([k, v]) => ({ key: k, value: v }))
@@ -338,6 +390,8 @@ const FlowEditorCanvas: React.FC = () => {
     } else {
       setTemplateName('');
       setTemplateLanguage('en_US');
+      setTemplateHeaderType(undefined);
+      setTemplateHeaderValue('');
       setTemplateParams([]);
       setTemplateButtons([]);
       setTemplateSaveAs('');
@@ -345,6 +399,63 @@ const FlowEditorCanvas: React.FC = () => {
 
     setIsModalOpen(true);
   }, []);
+
+  // When a user picks an approved template from Meta catalog
+  const handleSelectTemplate = (selectedTplName: string) => {
+    setTemplateName(selectedTplName);
+    const found = availableTemplates.find((t) => t.name === selectedTplName);
+    if (!found) return;
+
+    setTemplateLanguage(found.language || 'en_US');
+
+    // 1. Header Component Decomposition
+    const headerComp = found.components?.find((c) => c.type === 'HEADER');
+    if (headerComp) {
+      const format = (headerComp.format as any) || (headerComp.text ? 'TEXT' : undefined);
+      setTemplateHeaderType(format);
+      if (format === 'TEXT' && headerComp.text) {
+        setTemplateHeaderValue(headerComp.text);
+      } else {
+        setTemplateHeaderValue('');
+      }
+    } else {
+      setTemplateHeaderType(undefined);
+      setTemplateHeaderValue('');
+    }
+
+    // 2. Body Parameters Decomposition
+    const bodyComp = found.components?.find((c) => c.type === 'BODY');
+    if (bodyComp?.text) {
+      const regex = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+      const matches: string[] = [];
+      let match;
+      while ((match = regex.exec(bodyComp.text)) !== null) {
+        if (!matches.includes(match[1])) {
+          matches.push(match[1]);
+        }
+      }
+      if (matches.length > 0) {
+        setTemplateParams(matches.map((k) => ({ key: k, value: '' })));
+      } else {
+        setTemplateParams([]);
+      }
+    } else {
+      setTemplateParams([]);
+    }
+
+    // 3. Quick-Reply & CTA Buttons Decomposition
+    const buttonsComp = found.components?.find((c) => c.type === 'BUTTONS');
+    if (buttonsComp?.buttons && buttonsComp.buttons.length > 0) {
+      setTemplateButtons(
+        buttonsComp.buttons.map((btn) => ({
+          buttonText: btn.text,
+          next: '',
+        }))
+      );
+    } else {
+      setTemplateButtons([]);
+    }
+  };
 
   // Set Node as Entry Node
   const handleSetEntryNode = useCallback((newEntryId: string) => {
@@ -400,23 +511,7 @@ const FlowEditorCanvas: React.FC = () => {
       setEdges(generatedEdges);
       setEntryNodeId(entryId);
 
-      // Try loading templates from connected WhatsApp channels
-      try {
-        const channels = await channelsApi.list();
-        const waChannels = channels.filter((c: Channel) => c.type === 'whatsapp' && c.status === 'active');
-        const allTemplates: WhatsAppTemplate[] = [];
-        for (const ch of waChannels) {
-          try {
-            const tpls = await channelsApi.getTemplates(ch.id);
-            allTemplates.push(...tpls);
-          } catch {
-            // Non-fatal
-          }
-        }
-        setAvailableTemplates(allTemplates);
-      } catch {
-        // Non-fatal
-      }
+      await loadAvailableTemplates();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load flow', 'error');
       navigate('/flows');
@@ -471,14 +566,25 @@ const FlowEditorCanvas: React.FC = () => {
       case 'message':
         newNodeData = { id: generatedId, type: 'message', text: 'Hello! How can we help you?' };
         break;
-      case 'template':
-        newNodeData = {
-          id: generatedId,
-          type: 'template',
-          templateName: 'sample_template',
-          language: 'en_US',
-        };
+      case 'template': {
+        const firstApproved = approvedTemplates[0];
+        if (firstApproved) {
+          newNodeData = {
+            id: generatedId,
+            type: 'template',
+            templateName: firstApproved.name,
+            language: firstApproved.language || 'en_US',
+          };
+        } else {
+          newNodeData = {
+            id: generatedId,
+            type: 'template',
+            templateName: 'order_update',
+            language: 'en_US',
+          };
+        }
         break;
+      }
       case 'wait':
         newNodeData = { id: generatedId, type: 'wait', duration: 3600, durationUnit: 'seconds' };
         break;
@@ -538,13 +644,15 @@ const FlowEditorCanvas: React.FC = () => {
       case 'template': {
         const pObj: Record<string, string> = {};
         templateParams.forEach((p) => {
-          if (p.key && p.value) pObj[p.key] = p.value;
+          if (p.key.trim() && p.value.trim()) pObj[p.key.trim()] = p.value.trim();
         });
         updatedNode = {
           id: editingNodeId,
           type: 'template',
           templateName: templateName.trim(),
           language: templateLanguage.trim() || 'en_US',
+          headerType: templateHeaderType,
+          headerValue: templateHeaderValue.trim() || undefined,
           templateParams: Object.keys(pObj).length ? pObj : undefined,
           buttons: templateButtons.filter((b) => b.buttonText.trim()),
           saveAs: templateSaveAs.trim() || undefined,
@@ -678,6 +786,28 @@ const FlowEditorCanvas: React.FC = () => {
 
   const isValid = nodes.length > 0 && Boolean(entryNodeId);
 
+  // Helper for live preview body interpolation
+  const previewBodyText = useMemo(() => {
+    const rawBody = selectedMetaTemplate?.components?.find((c) => c.type === 'BODY')?.text;
+    if (!rawBody) {
+      if (templateName) {
+        return `Hi {{1}}, this is an official update regarding your request.`;
+      }
+      return 'Select or enter an approved WhatsApp template to preview the message content.';
+    }
+
+    let interpolated = rawBody;
+    templateParams.forEach((p) => {
+      const regex = new RegExp(`\\{\\{\\s*${p.key}\\s*\\}\\}`, 'g');
+      interpolated = interpolated.replace(regex, p.value ? p.value : `[${p.key}]`);
+    });
+    return interpolated;
+  }, [selectedMetaTemplate, templateParams, templateName]);
+
+  const previewFooterText = useMemo(() => {
+    return selectedMetaTemplate?.components?.find((c) => c.type === 'FOOTER')?.text;
+  }, [selectedMetaTemplate]);
+
   if (isLoading || !flow) {
     return (
       <div className="flex items-center justify-center min-h-[75vh]">
@@ -770,8 +900,8 @@ const FlowEditorCanvas: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={`Configure Node: ${editingNodeId}`}
-        description="Set up step properties, Meta templates, BullMQ wait timers, and automatic retry rules"
-        maxWidth="lg"
+        description="Set up step properties, Meta approved WhatsApp templates, delayed queue timers, and retry rules."
+        maxWidth={nodeType === 'template' ? '4xl' : 'lg'}
       >
         <form onSubmit={handleSaveModal} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -835,7 +965,7 @@ const FlowEditorCanvas: React.FC = () => {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="Hi {{name}}, here is your update..."
+                  placeholder="Hi {{contact.name}}, here is your update..."
                   value={nodeText}
                   onChange={(e) => setNodeText(e.target.value)}
                   className="w-full rounded-xl border border-gray-200 p-3 text-xs focus:outline-none focus:border-primary-500"
@@ -871,131 +1001,455 @@ const FlowEditorCanvas: React.FC = () => {
             </div>
           )}
 
-          {/* Form fields: WhatsApp Template */}
+          {/* ================= Form fields: WhatsApp Approved Template (Meta) ================= */}
           {nodeType === 'template' && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Meta WhatsApp Template
-                </label>
-                {availableTemplates.length > 0 ? (
-                  <select
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white"
-                  >
-                    <option value="">-- Choose Approved Template --</option>
-                    {availableTemplates.map((t) => (
-                      <option key={t.id || t.name} value={t.name}>
-                        {t.name} ({t.status} - {t.language})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <Input
-                    placeholder="e.g. order_update_v1"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    required
-                  />
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Language Code"
-                  value={templateLanguage}
-                  onChange={(e) => setTemplateLanguage(e.target.value)}
-                  required
-                />
-                <Input
-                  label="Save Tap Result As"
-                  placeholder="e.g. choice"
-                  value={templateSaveAs}
-                  onChange={(e) => setTemplateSaveAs(e.target.value)}
-                />
-              </div>
-
-              {/* Template Dynamic Params */}
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700">Dynamic Parameters</span>
-                  <button
-                    type="button"
-                    onClick={() => setTemplateParams([...templateParams, { key: String(templateParams.length + 1), value: '' }])}
-                    className="text-xs text-primary-600 font-semibold flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> Add Param
-                  </button>
-                </div>
-                {templateParams.map((p, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      placeholder="Key (e.g. 1)"
-                      value={p.key}
-                      onChange={(e) => {
-                        const copy = [...templateParams];
-                        copy[idx].key = e.target.value;
-                        setTemplateParams(copy);
-                      }}
-                      className="w-1/3 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white"
-                    />
-                    <input
-                      placeholder="Value (e.g. {{userName}})"
-                      value={p.value}
-                      onChange={(e) => {
-                        const copy = [...templateParams];
-                        copy[idx].value = e.target.value;
-                        setTemplateParams(copy);
-                      }}
-                      className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white"
-                    />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-1">
+              {/* Left Column: Template Configuration */}
+              <div className="lg:col-span-7 space-y-4">
+                {/* Meta Approved Template Selector */}
+                <div className="p-3.5 bg-emerald-50/50 rounded-2xl border border-emerald-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                        Meta Approved Template Catalog
+                      </span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setTemplateParams(templateParams.filter((_, i) => i !== idx))}
-                      className="p-1 text-gray-400 hover:text-rose-600"
+                      onClick={loadAvailableTemplates}
+                      disabled={isLoadingTemplates}
+                      className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1 p-1 rounded-md hover:bg-emerald-100/60 transition-colors"
+                      title="Refresh approved templates from connected WhatsApp channels"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTemplates ? 'animate-spin' : ''}`} />
+                      <span>{isLoadingTemplates ? 'Syncing...' : 'Sync with Meta'}</span>
                     </button>
                   </div>
-                ))}
-              </div>
 
-              {/* Template Buttons */}
-              <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-purple-950 flex items-center gap-1">
-                    <MousePointerClick className="w-3.5 h-3.5 text-purple-600" /> Quick-Reply Button Ports
+                  {approvedTemplates.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <select
+                        value={templateName}
+                        onChange={(e) => handleSelectTemplate(e.target.value)}
+                        className="w-full rounded-xl border border-emerald-200 px-3.5 py-2 text-xs font-semibold bg-white text-gray-800 shadow-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        required
+                      >
+                        <option value="">-- Choose Approved Template --</option>
+                        {approvedTemplates.map((t) => (
+                          <option key={t.id || t.name} value={t.name}>
+                            ✅ {t.name} ({t.category} • {t.language})
+                          </option>
+                        ))}
+                      </select>
+                      {selectedMetaTemplate && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                            Status: APPROVED
+                          </span>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                            Category: {selectedMetaTemplate.category}
+                          </span>
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                            Language: {selectedMetaTemplate.language}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+                        <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">No Meta-approved templates found on active WhatsApp channels.</p>
+                          <p className="text-[11px] text-amber-800 mt-0.5">
+                            Make sure your WhatsApp Business Account is connected in Channels, or enter the template name manually below.
+                          </p>
+                        </div>
+                      </div>
+                      <Input
+                        label="Template Name (Manual)"
+                        placeholder="e.g. order_confirmation_v1"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <Input
+                      label="Language Code"
+                      placeholder="en_US"
+                      value={templateLanguage}
+                      onChange={(e) => setTemplateLanguage(e.target.value)}
+                      required
+                    />
+                    <Input
+                      label="Save Button Tap As"
+                      placeholder="e.g. userChoice"
+                      value={templateSaveAs}
+                      onChange={(e) => setTemplateSaveAs(e.target.value)}
+                      helperText="Stores customer quick-reply text in variables"
+                    />
+                  </div>
+                </div>
+
+                {/* 1. Header Component Configuration */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-gray-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5 uppercase tracking-wider">
+                      {templateHeaderType === 'TEXT' && <FileText className="w-3.5 h-3.5 text-sky-600" />}
+                      {templateHeaderType === 'IMAGE' && <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />}
+                      {templateHeaderType === 'VIDEO' && <Video className="w-3.5 h-3.5 text-purple-600" />}
+                      {templateHeaderType === 'DOCUMENT' && <File className="w-3.5 h-3.5 text-amber-600" />}
+                      {!templateHeaderType && <Layers className="w-3.5 h-3.5 text-gray-500" />}
+                      Template Header Component
+                    </span>
+                    <select
+                      value={templateHeaderType || ''}
+                      onChange={(e) => setTemplateHeaderType(e.target.value ? (e.target.value as any) : undefined)}
+                      className="rounded-lg border border-gray-200 px-2 py-1 text-xs bg-white font-medium text-gray-700"
+                    >
+                      <option value="">None (No Header)</option>
+                      <option value="TEXT">🔤 Text Header</option>
+                      <option value="IMAGE">🖼️ Image Header</option>
+                      <option value="VIDEO">🎬 Video Header</option>
+                      <option value="DOCUMENT">📄 Document / PDF Header</option>
+                    </select>
+                  </div>
+
+                  {templateHeaderType === 'TEXT' && (
+                    <Input
+                      label="Header Text"
+                      placeholder="e.g. Order #{{orderId}} Confirmation"
+                      value={templateHeaderValue}
+                      onChange={(e) => setTemplateHeaderValue(e.target.value)}
+                      helperText="Supports static text or dynamic variables like {{orderId}}"
+                    />
+                  )}
+
+                  {(templateHeaderType === 'IMAGE' ||
+                    templateHeaderType === 'VIDEO' ||
+                    templateHeaderType === 'DOCUMENT') && (
+                    <div className="space-y-1.5">
+                      <Input
+                        label={`${templateHeaderType} Media Link or Variable`}
+                        placeholder="https://example.com/file.jpg or {{deal.invoiceUrl}}"
+                        value={templateHeaderValue}
+                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
+                        helperText={`Direct HTTPS URL or dynamic variable for Meta ${templateHeaderType} delivery.`}
+                      />
+                      <p className="text-[10px] text-gray-500">
+                        {templateHeaderType === 'IMAGE' && 'Supported formats: JPG, PNG (Max 5MB)'}
+                        {templateHeaderType === 'VIDEO' && 'Supported formats: MP4 (Max 16MB)'}
+                        {templateHeaderType === 'DOCUMENT' && 'Supported formats: PDF, DOCX (Max 100MB)'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Dynamic Body Parameter Mappings */}
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-gray-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-gray-800 uppercase tracking-wider block">
+                        Body Parameters Mapping
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        Map Meta template placeholders ({'{{1}}'}, {'{{2}}'}) to static values or flow variables.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTemplateParams([
+                          ...templateParams,
+                          { key: String(templateParams.length + 1), value: '' },
+                        ])
+                      }
+                      className="text-xs text-primary-600 hover:text-primary-800 font-semibold flex items-center gap-1 bg-primary-50 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Param
+                    </button>
+                  </div>
+
+                  {templateParams.length === 0 ? (
+                    <div className="p-3 bg-white rounded-xl border border-dashed border-gray-200 text-center text-xs text-gray-400">
+                      No dynamic parameters in this template body. Click "Add Param" if required.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {templateParams.map((p, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-2xs">
+                          <div className="w-28 shrink-0">
+                            <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Placeholder</span>
+                            <div className="relative">
+                              <span className="absolute left-2 top-1.5 text-xs text-gray-400 font-mono">{'{{'}</span>
+                              <input
+                                placeholder="1"
+                                value={p.key}
+                                onChange={(e) => {
+                                  const copy = [...templateParams];
+                                  copy[idx].key = e.target.value;
+                                  setTemplateParams(copy);
+                                }}
+                                className="w-full rounded-lg border border-gray-200 pl-6 pr-6 py-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50/40"
+                              />
+                              <span className="absolute right-2 top-1.5 text-xs text-gray-400 font-mono">{'}}'}</span>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Value / Flow Variable</span>
+                            <input
+                              placeholder="e.g. {{contact.name}} or 49.99"
+                              value={p.value}
+                              onChange={(e) => {
+                                const copy = [...templateParams];
+                                copy[idx].value = e.target.value;
+                                setTemplateParams(copy);
+                              }}
+                              className="w-full rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white focus:outline-none focus:border-primary-500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTemplateParams(templateParams.filter((_, i) => i !== idx))}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors mt-3"
+                            title="Remove parameter"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {/* Quick Variable Inserts */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] text-gray-400 font-medium">Quick Insert:</span>
+                        {['{{contact.name}}', '{{contact.email}}', '{{deal.title}}', '{{deal.value}}'].map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => {
+                              const emptyIdx = templateParams.findIndex((p) => !p.value);
+                              if (emptyIdx !== -1) {
+                                const copy = [...templateParams];
+                                copy[emptyIdx].value = v;
+                                setTemplateParams(copy);
+                              } else {
+                                setTemplateParams([
+                                  ...templateParams,
+                                  { key: String(templateParams.length + 1), value: v },
+                                ]);
+                              }
+                            }}
+                            className="text-[10px] font-mono bg-gray-100 hover:bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded transition-colors"
+                          >
+                            {v}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Quick-Reply Button Ports */}
+                <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-purple-950 flex items-center gap-1 uppercase tracking-wider">
+                        <MousePointerClick className="w-3.5 h-3.5 text-purple-600" /> Quick-Reply Button Ports
+                      </span>
+                      <p className="text-[11px] text-purple-800">
+                        Each button exposes an interactive output handle (<code>btn_0</code>, <code>btn_1</code>) on canvas.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTemplateButtons([...templateButtons, { buttonText: '', next: '' }])}
+                      className="text-xs text-purple-700 hover:text-purple-900 font-semibold flex items-center gap-1 bg-purple-100 px-2 py-1 rounded-lg transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Button
+                    </button>
+                  </div>
+
+                  {templateButtons.length === 0 ? (
+                    <div className="p-3 bg-white/80 rounded-xl border border-dashed border-purple-200 text-center text-xs text-purple-600">
+                      No interactive quick-reply buttons configured for this template.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {templateButtons.map((btn, idx) => (
+                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-purple-100 shadow-2xs">
+                          <span className="text-xs font-mono font-bold text-purple-700 px-1.5 py-0.5 rounded bg-purple-50 shrink-0">
+                            Port: btn_{idx}
+                          </span>
+                          <input
+                            placeholder="Button Text (e.g. Yes, Confirm Order)"
+                            value={btn.buttonText}
+                            onChange={(e) => {
+                              const copy = [...templateButtons];
+                              copy[idx].buttonText = e.target.value;
+                              setTemplateButtons(copy);
+                            }}
+                            className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white focus:outline-none focus:border-purple-500 font-medium"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setTemplateButtons(templateButtons.filter((_, i) => i !== idx))}
+                            className="p-1 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Automatic Retry on Failure */}
+                <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200/60 space-y-2">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1 uppercase tracking-wider">
+                    <Repeat className="w-3.5 h-3.5 text-amber-600" /> Automatic Retry on Ecosystem Error
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setTemplateButtons([...templateButtons, { buttonText: '', next: '' }])}
-                    className="text-xs text-purple-700 font-semibold flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> Add Button
-                  </button>
-                </div>
-                {templateButtons.map((btn, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      placeholder="Button Label (e.g. Track Order)"
-                      value={btn.buttonText}
-                      onChange={(e) => {
-                        const copy = [...templateButtons];
-                        copy[idx].buttonText = e.target.value;
-                        setTemplateButtons(copy);
-                      }}
-                      className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white"
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Max Retry Attempts"
+                      type="number"
+                      min="0"
+                      max="10"
+                      value={maxRetries}
+                      onChange={(e) => setMaxRetries(Number(e.target.value))}
+                      helperText="0 = no auto-retry (routes to Failed port)"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setTemplateButtons(templateButtons.filter((_, i) => i !== idx))}
-                      className="p-1 text-gray-400 hover:text-rose-600"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <Input
+                      label="Retry Delay (Seconds)"
+                      type="number"
+                      min="5"
+                      value={retryDelaySeconds}
+                      onChange={(e) => setRetryDelaySeconds(Number(e.target.value))}
+                      helperText="Delay between retry passes"
+                    />
                   </div>
-                ))}
+                </div>
+              </div>
+
+              {/* Right Column: Live WhatsApp Chat Bubble Preview */}
+              <div className="lg:col-span-5 flex flex-col items-center">
+                <div className="w-full sticky top-0 bg-[#efeae2] rounded-3xl p-4 border border-gray-300 shadow-inner flex flex-col space-y-3 min-h-[460px]">
+                  {/* WhatsApp Simulation Top Header */}
+                  <div className="bg-[#008069] text-white p-2.5 rounded-2xl flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border border-white/30">
+                        WA
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-bold">Business WhatsApp</span>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 fill-emerald-400" />
+                        </div>
+                        <span className="text-[9px] text-emerald-100">Official Business Account</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono font-medium">
+                      PREVIEW
+                    </span>
+                  </div>
+
+                  {/* WhatsApp Message Bubble Container */}
+                  <div className="flex-1 flex flex-col justify-start space-y-2 overflow-y-auto">
+                    <div className="self-start max-w-[94%] bg-white rounded-2xl rounded-tl-xs shadow-md border border-gray-200/60 overflow-hidden">
+                      {/* Media or Text Header Preview */}
+                      {templateHeaderType === 'TEXT' && templateHeaderValue && (
+                        <div className="p-3 pb-1 font-bold text-xs text-gray-900 border-b border-gray-100">
+                          {templateHeaderValue}
+                        </div>
+                      )}
+
+                      {templateHeaderType === 'IMAGE' && (
+                        <div className="bg-emerald-950/10 flex flex-col items-center justify-center min-h-[120px] p-2 text-center border-b border-gray-100">
+                          {templateHeaderValue && (templateHeaderValue.startsWith('http://') || templateHeaderValue.startsWith('https://')) ? (
+                            <img
+                              src={templateHeaderValue}
+                              alt="Header Preview"
+                              className="w-full h-32 object-cover rounded-lg"
+                              onError={(e) => {
+                                (e.target as any).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center gap-1 text-emerald-800 p-3">
+                              <ImageIcon className="w-8 h-8 opacity-70" />
+                              <span className="text-[11px] font-semibold">Image Header</span>
+                              <span className="text-[9px] font-mono text-gray-600 truncate max-w-[200px]">
+                                {templateHeaderValue || '{{variable}} or image link'}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {templateHeaderType === 'VIDEO' && (
+                        <div className="bg-purple-950/10 flex flex-col items-center justify-center min-h-[120px] p-4 text-center border-b border-gray-100 text-purple-900">
+                          <Video className="w-8 h-8 opacity-70 mb-1" />
+                          <span className="text-[11px] font-semibold">Video Header Attachment</span>
+                          <span className="text-[9px] font-mono text-gray-600 truncate max-w-[200px]">
+                            {templateHeaderValue || '{{videoUrl}}'}
+                          </span>
+                        </div>
+                      )}
+
+                      {templateHeaderType === 'DOCUMENT' && (
+                        <div className="bg-amber-950/10 flex items-center gap-2 p-3 border-b border-gray-100 text-amber-950">
+                          <File className="w-7 h-7 text-amber-700 shrink-0" />
+                          <div className="overflow-hidden">
+                            <span className="text-xs font-bold truncate block">PDF Document</span>
+                            <span className="text-[10px] font-mono text-gray-600 truncate block">
+                              {templateHeaderValue || '{{invoicePdfUrl}}'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Body Text */}
+                      <div className="p-3 text-xs text-gray-800 whitespace-pre-wrap leading-relaxed font-sans">
+                        {previewBodyText}
+                      </div>
+
+                      {/* Footer Text */}
+                      {previewFooterText && (
+                        <div className="px-3 pb-1 text-[10px] text-gray-400 italic">
+                          {previewFooterText}
+                        </div>
+                      )}
+
+                      {/* Timestamp & Delivered Checkmarks */}
+                      <div className="px-3 pb-2 flex items-center justify-end gap-1 text-[9px] text-gray-400">
+                        <span>12:00 PM</span>
+                        <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
+                      </div>
+
+                      {/* Buttons in Message Bubble */}
+                      {templateButtons.length > 0 && (
+                        <div className="border-t border-gray-100 divide-y divide-gray-100 bg-gray-50/50">
+                          {templateButtons.map((b, i) => (
+                            <div
+                              key={i}
+                              className="py-2 px-3 text-center text-xs font-semibold text-sky-600 flex items-center justify-center gap-1.5"
+                            >
+                              <MousePointerClick className="w-3.5 h-3.5 text-sky-500" />
+                              <span>{b.buttonText || `Button ${i + 1}`}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-center text-[10px] text-gray-500 font-medium">
+                    ⚡ Live WhatsApp chat simulation with dynamic variables
+                  </div>
+                </div>
               </div>
             </div>
           )}

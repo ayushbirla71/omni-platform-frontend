@@ -124,6 +124,8 @@ export const flowsApi = {
   update: (id: string, definition: FlowDefinition) =>
     apiClient.put<Flow>(`/flows/${id}`, { definition }),
 
+  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/flows/${id}`),
+
   publish: (id: string) => apiClient.post<Flow>(`/flows/${id}/publish`),
 };
 
