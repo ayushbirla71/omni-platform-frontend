@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import {
   MessageSquare,
   Search,
@@ -18,10 +18,13 @@ import {
   Music,
   Film,
   ExternalLink,
+  ShoppingBag,
+  ShoppingCart,
+  Package,
   X,
 } from 'lucide-react';
-import { conversationsApi, contactsApi, dealsApi } from '../api';
-import type { Conversation, Message, Contact, Deal } from '../types';
+import { conversationsApi, contactsApi, dealsApi, ordersApi } from '../api';
+import type { Conversation, Message, Contact, Deal, Order } from '../types';
 import { useToast } from '../context/ToastContext';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -39,6 +42,7 @@ export const InboxPage: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [contact, setContact] = useState<Contact | null>(null);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
 
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -125,7 +129,7 @@ export const InboxPage: React.FC = () => {
         setMessages(msgs);
         setTimeout(scrollToBottom, 50);
 
-        // Load contact details & deals
+        // Load contact details, deals & orders
         const currentConv = conversations.find((c) => c.id === selectedConvId);
         if (currentConv?.contactId) {
           const contactList = await contactsApi.list(100, 0);
@@ -134,6 +138,16 @@ export const InboxPage: React.FC = () => {
 
           const allDeals = await dealsApi.list();
           setDeals(allDeals.filter((d) => d.contactId === currentConv.contactId));
+
+          try {
+            const ordersRes = await ordersApi.list({ contactId: currentConv.contactId });
+            setOrders(ordersRes.orders || []);
+          } catch {
+            setOrders([]);
+          }
+        } else {
+          setDeals([]);
+          setOrders([]);
         }
       } catch (err) {
         showToast('Failed to load messages', 'error');
@@ -433,6 +447,16 @@ export const InboxPage: React.FC = () => {
                   const isAudio = msgType === 'audio';
                   const isVideo = msgType === 'video';
                   const isTemplate = msgType === 'template';
+                  const isOrder = msgType === 'order' || !!(msg.raw as any)?.order || !!msg.content?.order;
+                  const rawOrderData = (msg.raw as any)?.order || msg.content?.order;
+                  const orderProductItems: Array<{ product_retailer_id?: string; sku?: string; name?: string; quantity?: number; item_price?: number; unitPrice?: number; currency?: string }> =
+                    rawOrderData?.product_items || msg.content?.product_items || msg.content?.items || [];
+                  const orderCustomerNote = rawOrderData?.text || msg.content?.customerNote || msg.content?.text;
+                  const orderCurrency = orderProductItems[0]?.currency || 'INR';
+                  const orderTotal = orderProductItems.reduce(
+                    (acc, item) => acc + (Number(item.item_price || item.unitPrice || 0) * Number(item.quantity || 1)),
+                    0
+                  );
 
                   return (
                     <div
@@ -555,8 +579,82 @@ export const InboxPage: React.FC = () => {
                           </div>
                         )}
 
+                        {/* 6. WhatsApp Inbound Cart / Order */}
+                        {isOrder && (
+                          <div
+                            className={cn(
+                              'p-3 rounded-xl border mb-1.5 space-y-2 min-w-[240px]',
+                              isOutbound
+                                ? 'bg-primary-700/40 border-primary-400/30 text-white'
+                                : 'bg-emerald-50/80 border-emerald-200 text-gray-900'
+                            )}
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-emerald-200/60 pb-1.5">
+                              <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-800">
+                                <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                                <span>WhatsApp Cart Order</span>
+                              </div>
+                              <Badge variant="success" size="sm">
+                                Cart
+                              </Badge>
+                            </div>
+
+                            {/* Product Items */}
+                            <div className="space-y-1 pt-0.5">
+                              {orderProductItems.length > 0 ? (
+                                orderProductItems.map((item, idx) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <div className="truncate max-w-[180px]">
+                                      <span className="font-semibold text-gray-800">
+                                        {item.name || item.product_retailer_id || item.sku || `Item #${idx + 1}`}
+                                      </span>
+                                      <span className="text-[11px] text-gray-500 ml-1.5 font-medium">
+                                        x{item.quantity || 1}
+                                      </span>
+                                    </div>
+                                    <span className="font-semibold text-gray-900 shrink-0 ml-2">
+                                      {item.currency || 'INR'}{' '}
+                                      {(
+                                        Number(item.item_price || item.unitPrice || 0) * Number(item.quantity || 1)
+                                      ).toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-xs italic text-gray-500">Cart items received from customer</p>
+                              )}
+                            </div>
+
+                            {/* Total Amount & Notes */}
+                            {orderProductItems.length > 0 && (
+                              <div className="border-t border-emerald-200/60 pt-1.5 flex items-center justify-between text-xs font-bold">
+                                <span>Estimated Total:</span>
+                                <span className="text-emerald-700 font-extrabold text-sm">
+                                  {orderCurrency} {orderTotal.toLocaleString()}
+                                </span>
+                              </div>
+                            )}
+
+                            {orderCustomerNote && (
+                              <p className="text-[11px] text-gray-600 italic bg-white/70 p-1.5 rounded-lg border border-emerald-100">
+                                Note: "{orderCustomerNote}"
+                              </p>
+                            )}
+
+                            <div className="pt-0.5">
+                              <Link
+                                to="/orders"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
+                              >
+                                <span>Manage in Orders</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </Link>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Message Text (Hide placeholder [Image]/[Audio] if media is rendered directly) */}
-                        {(!mediaUrl || (!isImage && !isVideo && !isAudio && !isDocument) || (msg.text && !['[Image]', '[Audio]', '[Video]', '[Sticker]', '[Document]'].includes(msg.text.trim()) && !msg.text.startsWith('[Template:'))) && (
+                        {(!mediaUrl || (!isImage && !isVideo && !isAudio && !isDocument) || (msg.text && !['[Image]', '[Audio]', '[Video]', '[Sticker]', '[Document]'].includes(msg.text.trim()) && !msg.text.startsWith('[Template:'))) && !isOrder && (
                           <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                         )}
 
@@ -693,6 +791,67 @@ export const InboxPage: React.FC = () => {
                     <p className="text-xs font-semibold text-primary-700">
                       ${((Number(deal.value) || 0) / 100).toLocaleString('en-US')}
                     </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Customer Orders */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                Orders ({orders.length})
+              </h4>
+              <Link
+                to="/orders"
+                className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+              >
+                <span>View All</span>
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <div className="space-y-2">
+              {orders.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No orders found for this contact.</p>
+              ) : (
+                orders.slice(0, 5).map((ord) => (
+                  <div key={ord.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-900">{ord.orderNumber}</span>
+                      <Badge
+                        variant={
+                          ord.status === 'completed'
+                            ? 'success'
+                            : ord.status === 'cancelled' || ord.status === 'refunded'
+                            ? 'danger'
+                            : ord.status === 'paid' || ord.status === 'processing'
+                            ? 'purple'
+                            : 'warning'
+                        }
+                        size="sm"
+                      >
+                        {ord.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500">{ord.items?.length || 0} items</span>
+                      <span className="font-bold text-emerald-700">
+                        {ord.currency} {(ord.totalAmount ?? ord.total_amount ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5 text-[10px] text-gray-400">
+                      <span>
+                        Payment:{' '}
+                        <strong className={(ord.paymentStatus || ord.payment_status) === 'paid' ? 'text-emerald-600' : 'text-amber-600'}>
+                          {ord.paymentStatus || ord.payment_status}
+                        </strong>
+                      </span>
+                      <span>
+                        {ord.createdAt || ord.created_at ? new Date(ord.createdAt || ord.created_at || '').toLocaleDateString() : ''}
+                      </span>
+                    </div>
                   </div>
                 ))
               )}

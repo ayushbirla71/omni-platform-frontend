@@ -142,6 +142,7 @@ export interface Message {
   mediaType?: string;
   mediaStorageKey?: string;
   content?: Record<string, any>;
+  raw?: Record<string, any>;
   status?: MessageStatus;
   createdAt?: string;
   created_at?: string;
@@ -452,5 +453,106 @@ export interface SystemErrorsResponse {
   total: number;
   limit: number;
   errors: SystemLogEntry[];
+}
+
+// Commerce & Products
+export interface Product {
+  id: string;
+  tenantId?: string;
+  tenant_id?: string;
+  name: string;
+  sku: string;
+  description?: string | null;
+  price: number;
+  currency: string;
+  images: string[];
+  category?: string | null;
+  isAvailable?: boolean;
+  is_available?: boolean;
+  inventoryQuantity?: number;
+  inventory_quantity?: number;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
+export interface OrderItem {
+  productId?: string;
+  product_id?: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  unit_price?: number;
+  total: number;
+}
+
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'completed' | 'cancelled' | 'refunded';
+export type PaymentStatus = 'pending' | 'authorized' | 'captured' | 'paid' | 'unpaid' | 'failed' | 'refunded';
+export type PaymentGateway = 'razorpay' | 'stripe' | 'whatsapp_pay' | 'manual';
+
+export interface Order {
+  id: string;
+  tenantId?: string;
+  tenant_id?: string;
+  contactId?: string;
+  contact_id?: string;
+  contactName?: string | null;
+  contact_name?: string | null;
+  contactExternalId?: string | null;
+  contact_external_id?: string | null;
+  conversationId?: string | null;
+  conversation_id?: string | null;
+  orderNumber?: string;
+  order_number?: string;
+  status: OrderStatus;
+  currency: string;
+  totalAmount?: number;
+  total_amount?: number;
+  items: OrderItem[];
+  shippingAddress?: Record<string, any> | null;
+  shipping_address?: Record<string, any> | null;
+  paymentStatus?: PaymentStatus;
+  payment_status?: PaymentStatus;
+  paymentMethod?: string | null;
+  payment_method?: string | null;
+  paymentLink?: string | null;
+  payment_link?: string | null;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
+export interface OrderStats {
+  totalOrders: number;
+  totalRevenue: number;
+  pendingOrders: number;
+  paidOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  tenantId?: string;
+  tenant_id?: string;
+  orderId?: string;
+  order_id?: string;
+  gateway: PaymentGateway;
+  gatewayOrderId?: string | null;
+  gateway_order_id?: string | null;
+  gatewayPaymentId?: string | null;
+  gateway_payment_id?: string | null;
+  amount: number;
+  currency: string;
+  status: 'created' | 'success' | 'failed' | 'refunded';
+  rawResponse?: Record<string, any>;
+  raw_response?: Record<string, any>;
+  createdAt?: string;
+  created_at?: string;
 }
 

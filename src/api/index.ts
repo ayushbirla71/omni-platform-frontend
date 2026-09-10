@@ -20,6 +20,10 @@ import type {
   SystemStatus,
   SystemLogsResponse,
   SystemErrorsResponse,
+  Product,
+  Order,
+  OrderStats,
+  PaymentTransaction,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -202,5 +206,76 @@ export const systemApi = {
     const token = apiClient.getToken();
     return `/api/system/logs/download?type=${type}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
   },
+};
+
+// ==================== COMMERCE & PRODUCTS API ====================
+export const productsApi = {
+  list: (params?: { category?: string; availableOnly?: boolean; search?: string; limit?: number; offset?: number }) =>
+    apiClient.get<{ products: Product[]; total: number }>('/products', params),
+
+  getCategories: () =>
+    apiClient.get<{ categories: string[] }>('/products/categories'),
+
+  get: (id: string) =>
+    apiClient.get<{ product: Product }>(`/products/${id}`),
+
+  create: (data: Partial<Product>) =>
+    apiClient.post<{ product: Product }>('/products', data),
+
+  update: (id: string, data: Partial<Product>) =>
+    apiClient.patch<{ product: Product }>(`/products/${id}`, data),
+
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/products/${id}`),
+};
+
+// ==================== ORDERS API ====================
+export const ordersApi = {
+  list: (params?: {
+    status?: string;
+    paymentStatus?: string;
+    contactId?: string;
+    conversationId?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }) => apiClient.get<{ orders: Order[]; total: number }>('/orders', params),
+
+  getStats: () =>
+    apiClient.get<OrderStats>('/orders/stats'),
+
+  get: (id: string) =>
+    apiClient.get<{ order: Order }>(`/orders/${id}`),
+
+  create: (data: {
+    contactId: string;
+    conversationId?: string;
+    items: Array<{ productId?: string; sku?: string; name: string; quantity: number; unitPrice: number }>;
+    currency?: string;
+    shippingAddress?: Record<string, any>;
+    paymentMethod?: string;
+    metadata?: Record<string, any>;
+  }) => apiClient.post<{ order: Order }>('/orders', data),
+
+  updateStatus: (id: string, data: { status: string; paymentStatus?: string }) =>
+    apiClient.patch<{ order: Order }>(`/orders/${id}/status`, data),
+
+  setPaymentLink: (id: string, data: { paymentLink: string; paymentMethod?: string }) =>
+    apiClient.post<{ order: Order }>(`/orders/${id}/payment-link`, data),
+};
+
+// ==================== PAYMENTS API ====================
+export const paymentsApi = {
+  listTransactions: (orderId?: string) =>
+    apiClient.get<{ transactions: PaymentTransaction[] }>('/payments/transactions', orderId ? { orderId } : undefined),
+
+  createRazorpayLink: (data: { orderId: string; callbackUrl?: string; keyId?: string; keySecret?: string }) =>
+    apiClient.post<{ paymentLink: string; paymentId?: string }>('/payments/razorpay/link', data),
+
+  createStripeLink: (data: { orderId: string; successUrl?: string; cancelUrl?: string; secretKey?: string }) =>
+    apiClient.post<{ paymentLink: string; sessionId?: string }>('/payments/stripe/link', data),
+
+  recordManualPayment: (data: { orderId: string; amount: number; currency?: string; reference?: string }) =>
+    apiClient.post<{ transaction: PaymentTransaction }>('/payments/manual', data),
 };
 

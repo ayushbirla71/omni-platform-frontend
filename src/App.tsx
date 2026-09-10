@@ -14,6 +14,8 @@ import { ContactsPage } from './pages/ContactsPage';
 import { CampaignsPage } from './pages/CampaignsPage';
 import { NewCampaignPage } from './pages/NewCampaignPage';
 import { DealsPage } from './pages/DealsPage';
+import { ProductsPage } from './pages/ProductsPage';
+import { OrdersPage } from './pages/OrdersPage';
 import { SearchPage } from './pages/SearchPage';
 import { SystemLogsPage } from './pages/SystemLogsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
@@ -109,6 +111,8 @@ function App() {
               <Route path="campaigns" element={<CampaignsPage />} />
               <Route path="campaigns/new" element={<NewCampaignPage />} />
               <Route path="deals" element={<DealsPage />} />
+              <Route path="products" element={<ProductsPage />} />
+              <Route path="orders" element={<OrdersPage />} />
               <Route path="search" element={<SearchPage />} />
               <Route path="system-logs" element={<SystemLogsPage />} />
             </Route>

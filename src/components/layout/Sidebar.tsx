@@ -8,6 +8,8 @@ import {
   Users,
   Megaphone,
   KanbanSquare,
+  Package,
+  ShoppingBag,
   Search,
   Terminal,
   LogOut,
@@ -31,6 +33,8 @@ export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ is
     { name: 'Contacts', href: '/contacts', icon: Users },
     { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
     { name: 'Deals & CRM', href: '/deals', icon: KanbanSquare },
+    { name: 'Products', href: '/products', icon: Package },
+    { name: 'Orders', href: '/orders', icon: ShoppingBag },
     { name: 'Global Search', href: '/search', icon: Search },
   ];
 
