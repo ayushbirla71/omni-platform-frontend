@@ -128,17 +128,25 @@ export type MessageStatus = 'received' | 'sent' | 'delivered' | 'read' | 'failed
 export interface Message {
   _id?: string;
   id?: string;
-  tenantId: string;
-  conversationId: string;
-  channelId: string;
+  tenantId?: string;
+  tenant_id?: string;
+  conversationId?: string;
+  conversation_id?: string;
+  channelId?: string;
   direction: MessageDirection;
-  senderType: 'customer' | 'agent' | 'bot' | 'system';
+  type?: string;
+  senderType?: 'customer' | 'agent' | 'bot' | 'system';
   senderUserId?: string;
-  text: string;
+  text?: string;
   mediaUrl?: string;
   mediaType?: string;
+  mediaStorageKey?: string;
+  content?: Record<string, any>;
   status?: MessageStatus;
-  createdAt: string;
+  createdAt?: string;
+  created_at?: string;
+  sentAt?: string;
+  sent_at?: string;
 }
 
 // Flow Engine & Visual Graph Canvas

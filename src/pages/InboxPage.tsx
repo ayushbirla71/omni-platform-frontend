@@ -12,6 +12,13 @@ import {
   Plus,
   RefreshCw,
   Phone,
+  FileText,
+  Download,
+  Image as ImageIcon,
+  Music,
+  Film,
+  ExternalLink,
+  X,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi } from '../api';
 import type { Conversation, Message, Contact, Deal } from '../types';
@@ -43,6 +50,9 @@ export const InboxPage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const isSendingRef = useRef(false);
 
+  // Media preview modal / lightbox
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   // Modals
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
   const [newDealTitle, setNewDealTitle] = useState('');
@@ -51,6 +61,21 @@ export const InboxPage: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
+
+  const getMediaUrl = (msg: Message): string | null => {
+    const key = msg.mediaStorageKey || msg.content?.mediaStorageKey;
+    if (key) {
+      const token = localStorage.getItem('auth_token') || '';
+      return `/api/media/file?key=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`;
+    }
+    if (msg.mediaUrl && (msg.mediaUrl.startsWith('http://') || msg.mediaUrl.startsWith('https://') || msg.mediaUrl.startsWith('/api/'))) {
+      return msg.mediaUrl;
+    }
+    if (msg.content?.mediaUrl && (msg.content.mediaUrl.startsWith('http://') || msg.content.mediaUrl.startsWith('https://') || msg.content.mediaUrl.startsWith('/api/'))) {
+      return msg.content.mediaUrl;
+    }
+    return null;
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -401,6 +426,14 @@ export const InboxPage: React.FC = () => {
               ) : (
                 messages.map((msg, index) => {
                   const isOutbound = msg.direction === 'outbound';
+                  const mediaUrl = getMediaUrl(msg);
+                  const msgType = msg.type || msg.content?.type || 'text';
+                  const isImage = msgType === 'image' || msgType === 'sticker';
+                  const isDocument = msgType === 'document';
+                  const isAudio = msgType === 'audio';
+                  const isVideo = msgType === 'video';
+                  const isTemplate = msgType === 'template';
+
                   return (
                     <div
                       key={msg._id || msg.id || index}
@@ -408,20 +441,133 @@ export const InboxPage: React.FC = () => {
                     >
                       <div
                         className={cn(
-                          'max-w-md px-4 py-3 rounded-2xl shadow-xs text-xs space-y-1',
+                          'max-w-md px-3.5 py-2.5 rounded-2xl shadow-xs text-xs space-y-1.5',
                           isOutbound
                             ? 'bg-primary-600 text-white rounded-tr-none'
                             : 'bg-white text-gray-900 border border-gray-200/80 rounded-tl-none'
                         )}
                       >
-                        <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                        {/* 1. Image / Sticker Attachment */}
+                        {isImage && mediaUrl && (
+                          <div className="relative group overflow-hidden rounded-xl border border-black/5 mb-1.5">
+                            <img
+                              src={mediaUrl}
+                              alt={msg.text || 'Received image'}
+                              className="max-h-64 w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                              onClick={() => setPreviewImage(mediaUrl)}
+                              loading="lazy"
+                            />
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewImage(mediaUrl)}
+                                className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs"
+                                title="View full image"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 2. Document / PDF Attachment */}
+                        {isDocument && (
+                          <div
+                            className={cn(
+                              'flex items-center gap-3 p-3 rounded-xl border mb-1.5',
+                              isOutbound
+                                ? 'bg-primary-700/40 border-primary-400/30 text-white'
+                                : 'bg-gray-50 border-gray-200 text-gray-800'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                              isOutbound ? 'bg-primary-500/50' : 'bg-red-50 text-red-600'
+                            )}>
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-xs truncate">
+                                {msg.content?.filename || (msg.text?.startsWith('[Document') ? msg.text.replace(/^\[Document:?\s*|\]$/g, '') : msg.text) || 'Document'}
+                              </p>
+                              <p className={cn('text-[10px]', isOutbound ? 'text-primary-200' : 'text-gray-400')}>
+                                {msg.content?.filesize ? `${Math.round(msg.content.filesize / 1024)} KB` : 'Attachment'}
+                              </p>
+                            </div>
+                            {mediaUrl && (
+                              <a
+                                href={mediaUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download
+                                className={cn(
+                                  'p-2 rounded-lg transition-colors shrink-0',
+                                  isOutbound
+                                    ? 'bg-white/20 hover:bg-white/30 text-white'
+                                    : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                                )}
+                                title="Download document"
+                              >
+                                <Download className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 3. Audio / Voice Note */}
+                        {isAudio && (
+                          <div className="pt-1 pb-0.5 min-w-[240px]">
+                            {mediaUrl ? (
+                              <audio
+                                controls
+                                src={mediaUrl}
+                                className="w-full h-8"
+                                preload="metadata"
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2 p-2 rounded-lg bg-black/10 text-xs">
+                                <Music className="w-4 h-4" />
+                                <span>Voice / Audio message</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 4. Video Player */}
+                        {isVideo && mediaUrl && (
+                          <div className="rounded-xl overflow-hidden mb-1.5 border border-black/5">
+                            <video
+                              controls
+                              src={mediaUrl}
+                              className="max-h-64 w-full rounded-xl"
+                              preload="metadata"
+                            />
+                          </div>
+                        )}
+
+                        {/* 5. WhatsApp Template Preview Badge */}
+                        {isTemplate && (
+                          <div className={cn(
+                            'px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider mb-1 inline-block',
+                            isOutbound ? 'bg-primary-700 text-primary-100' : 'bg-gray-100 text-gray-600'
+                          )}>
+                            Template: {msg.content?.templateName || 'WhatsApp Template'}
+                          </div>
+                        )}
+
+                        {/* Message Text (Hide placeholder [Image]/[Audio] if media is rendered directly) */}
+                        {(!mediaUrl || (!isImage && !isVideo && !isAudio && !isDocument) || (msg.text && !['[Image]', '[Audio]', '[Video]', '[Sticker]', '[Document]'].includes(msg.text.trim()) && !msg.text.startsWith('[Template:'))) && (
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                        )}
+
+                        {/* Message Timestamp & Status Ticks */}
                         <div
                           className={cn(
                             'flex items-center justify-end gap-1 text-[10px] pt-1',
                             isOutbound ? 'text-primary-100' : 'text-gray-400'
                           )}
                         >
-                          <span>{formatDateTime(msg.createdAt)}</span>
+                          <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
                           {isOutbound && (
                             <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
                               {msg.status === 'failed' ? (
@@ -609,6 +755,42 @@ export const InboxPage: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Media Lightbox Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-10 right-0 text-white/80 hover:text-white p-1 rounded-full bg-black/40 hover:bg-black/60 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="mt-3 flex gap-2">
+              <a
+                href={previewImage}
+                target="_blank"
+                rel="noopener noreferrer"
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-medium backdrop-blur-xs transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download full size
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
