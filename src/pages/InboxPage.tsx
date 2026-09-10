@@ -6,22 +6,16 @@ import {
   Send,
   User,
   Radio,
-  Clock,
+  Check,
   CheckCheck,
+  AlertCircle,
   Plus,
   RefreshCw,
   Phone,
-  UserCheck,
-  Tag,
-  Paperclip,
-  Smile,
-  ChevronRight,
-  Filter,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi } from '../api';
 import type { Conversation, Message, Contact, Deal } from '../types';
 import { useToast } from '../context/ToastContext';
-import { useAuth } from '../context/AuthContext';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Spinner } from '../components/common/Tabs';
@@ -57,7 +51,6 @@ export const InboxPage: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
-  const { user } = useAuth();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -126,6 +119,30 @@ export const InboxPage: React.FC = () => {
 
     loadMessagesAndContact();
   }, [selectedConvId]);
+
+  // Periodic background polling for live incoming messages & conversation updates
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const convList = await conversationsApi.list(filterStatus === 'all' ? undefined : filterStatus);
+        setConversations(convList);
+      } catch {}
+
+      if (selectedConvId && !isSendingRef.current) {
+        try {
+          const msgs = await conversationsApi.getMessages(selectedConvId);
+          setMessages((prev) => {
+            if (msgs.length !== prev.length || JSON.stringify(msgs) !== JSON.stringify(prev)) {
+              return msgs;
+            }
+            return prev;
+          });
+        } catch {}
+      }
+    }, 4000);
+
+    return () => clearInterval(pollInterval);
+  }, [selectedConvId, filterStatus]);
 
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -405,7 +422,19 @@ export const InboxPage: React.FC = () => {
                           )}
                         >
                           <span>{formatDateTime(msg.createdAt)}</span>
-                          {isOutbound && <CheckCheck className="w-3 h-3" />}
+                          {isOutbound && (
+                            <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
+                              {msg.status === 'failed' ? (
+                                <AlertCircle className="w-3 h-3 text-red-300" />
+                              ) : msg.status === 'read' ? (
+                                <CheckCheck className="w-3 h-3 text-sky-200" />
+                              ) : msg.status === 'delivered' ? (
+                                <CheckCheck className="w-3 h-3 text-primary-200" />
+                              ) : (
+                                <Check className="w-3 h-3 text-primary-200" />
+                              )}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -461,7 +490,7 @@ export const InboxPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-gray-400" />
                 <span className="text-xs font-semibold text-gray-900">
-                  {activeConversation.contactName || 'No Name Set'}
+                  {contact?.name || activeConversation.contactName || 'No Name Set'}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-600">
@@ -470,8 +499,22 @@ export const InboxPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-600">
                 <Phone className="w-3.5 h-3.5 text-gray-400" />
-                <span>{activeConversation.contactExternalId}</span>
+                <span>{contact?.externalId || activeConversation.contactExternalId}</span>
               </div>
+              {contact?.attributes?.email && (
+                <div className="text-xs text-gray-600 truncate">
+                  ✉️ {contact.attributes.email}
+                </div>
+              )}
+              {contact?.attributes?.tags && contact.attributes.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {contact.attributes.tags.map((t: string) => (
+                    <Badge key={t} variant="secondary" size="sm">
+                      {t}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
