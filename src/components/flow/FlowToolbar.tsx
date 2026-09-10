@@ -18,6 +18,8 @@ import {
   Globe,
   UserCheck,
   StopCircle,
+  Brain,
+  Split,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../common/Button';
@@ -188,6 +190,18 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
                 className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-orange-50 text-xs font-medium text-gray-800 flex items-center gap-2 transition-colors"
               >
                 <GitBranch className="w-4 h-4 text-orange-600" /> Branch Condition
+              </button>
+              <button
+                onClick={() => { onAddNode('ai_agent'); setIsAddMenuOpen(false); }}
+                className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-violet-50 text-xs font-medium text-gray-800 flex items-center gap-2 transition-colors"
+              >
+                <Brain className="w-4 h-4 text-violet-600" /> AI Agent (RAG)
+              </button>
+              <button
+                onClick={() => { onAddNode('intent_router'); setIsAddMenuOpen(false); }}
+                className="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-fuchsia-50 text-xs font-medium text-gray-800 flex items-center gap-2 transition-colors"
+              >
+                <Split className="w-4 h-4 text-fuchsia-600" /> Intent Router
               </button>
               <button
                 onClick={() => { onAddNode('action'); setIsAddMenuOpen(false); }}

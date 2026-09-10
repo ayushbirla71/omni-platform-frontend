@@ -40,8 +40,11 @@ import {
   Info,
   Smartphone,
   ExternalLink,
+  Brain,
+  Split,
+  ShieldAlert,
 } from 'lucide-react';
-import { flowsApi, channelsApi } from '../api';
+import { flowsApi, channelsApi, knowledgeBasesApi } from '../api';
 import type {
   Flow,
   FlowDefinition,
@@ -49,6 +52,7 @@ import type {
   FlowNodeType,
   WhatsAppTemplate,
   Channel,
+  KnowledgeBase,
 } from '../types';
 import { useToast } from '../context/ToastContext';
 import { Button } from '../components/common/Button';
@@ -91,6 +95,10 @@ const FlowEditorCanvas: React.FC = () => {
   const [availableTemplates, setAvailableTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
+  // Available Knowledge Bases
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [isLoadingKBs, setIsLoadingKBs] = useState(false);
+
   // React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -123,6 +131,24 @@ const FlowEditorCanvas: React.FC = () => {
     { equals: '', next: '' },
   ]);
   const [conditionDefault, setConditionDefault] = useState('');
+
+  // AI Agent Form fields
+  const [aiKbId, setAiKbId] = useState('');
+  const [aiQueryVar, setAiQueryVar] = useState('last_message');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiSaveResponseAs, setAiSaveResponseAs] = useState('ai_response');
+  const [aiSendImmediately, setAiSendImmediately] = useState(true);
+  const [aiFallbackThreshold, setAiFallbackThreshold] = useState(0.2);
+
+  // Intent Router Form fields
+  const [intentInputVar, setIntentInputVar] = useState('last_message');
+  const [intentBranches, setIntentBranches] = useState<Array<{ intent: string; next: string }>>([
+    { intent: 'support', next: '' },
+    { intent: 'sales', next: '' },
+  ]);
+  const [intentDefault, setIntentDefault] = useState('');
+  const [intentSaveIntentAs, setIntentSaveIntentAs] = useState('detected_intent');
+  const [intentSaveSentimentAs, setIntentSaveSentimentAs] = useState('detected_sentiment');
 
   // WhatsApp Template Form fields
   const [templateName, setTemplateName] = useState('');
@@ -263,7 +289,57 @@ const FlowEditorCanvas: React.FC = () => {
           }
         }
 
-        // 3. Wait / Input / Action
+        // 3. AI Agent node (Answered vs Fallback)
+        if (n.type === 'ai_agent') {
+          if (n.next) {
+            generatedEdges.push({
+              id: `e-${n.id}-continue-${n.next}`,
+              source: n.id,
+              sourceHandle: 'continue',
+              target: n.next,
+              type: 'custom',
+              label: 'Answered',
+            });
+          }
+          if (n.onFallback) {
+            generatedEdges.push({
+              id: `e-${n.id}-fallback-${n.onFallback}`,
+              source: n.id,
+              sourceHandle: 'fallback',
+              target: n.onFallback,
+              type: 'custom',
+              label: `Fallback (<${n.fallbackThreshold ?? 0.2})`,
+            });
+          }
+        }
+
+        // 4. Intent Router branches
+        if (n.type === 'intent_router') {
+          n.branches?.forEach((b, bIdx) => {
+            if (b.next) {
+              generatedEdges.push({
+                id: `e-${n.id}-intent-${bIdx}-${b.next}`,
+                source: n.id,
+                sourceHandle: `intent_${bIdx}`,
+                target: b.next,
+                type: 'custom',
+                label: `Intent: "${b.intent}"`,
+              });
+            }
+          });
+          if (n.default) {
+            generatedEdges.push({
+              id: `e-${n.id}-default-${n.default}`,
+              source: n.id,
+              sourceHandle: 'default',
+              target: n.default,
+              type: 'custom',
+              label: 'Default',
+            });
+          }
+        }
+
+        // 5. Wait / Input / Action
         if ((n.type === 'wait' || n.type === 'input' || n.type === 'action') && n.next) {
           generatedEdges.push({
             id: `e-${n.id}-continue-${n.next}`,
@@ -318,6 +394,23 @@ const FlowEditorCanvas: React.FC = () => {
         }
         const defEdge = outgoing.find((e) => e.sourceHandle === 'default');
         baseNode.default = defEdge?.target || undefined;
+      } else if (baseNode.type === 'ai_agent') {
+        const contEdge = outgoing.find((e) => e.sourceHandle === 'continue');
+        const fallbackEdge = outgoing.find((e) => e.sourceHandle === 'fallback');
+        baseNode.next = contEdge?.target || undefined;
+        baseNode.onFallback = fallbackEdge?.target || undefined;
+      } else if (baseNode.type === 'intent_router') {
+        if (baseNode.branches) {
+          baseNode.branches = baseNode.branches.map((b, bIdx) => {
+            const bEdge = outgoing.find((e) => e.sourceHandle === `intent_${bIdx}`);
+            return {
+              ...b,
+              next: bEdge?.target || b.next || '',
+            };
+          });
+        }
+        const defEdge = outgoing.find((e) => e.sourceHandle === 'default');
+        baseNode.default = defEdge?.target || undefined;
       } else if (baseNode.type === 'wait' || baseNode.type === 'input' || baseNode.type === 'action') {
         const contEdge = outgoing.find((e) => e.sourceHandle === 'continue' || !e.sourceHandle);
         baseNode.next = contEdge?.target || undefined;
@@ -355,6 +448,20 @@ const FlowEditorCanvas: React.FC = () => {
     }
   }, []);
 
+  // Fetch Knowledge Bases for AI Agent RAG nodes
+  const loadAvailableKnowledgeBases = useCallback(async () => {
+    setIsLoadingKBs(true);
+    try {
+      const res = await knowledgeBasesApi.list();
+      const items = res.items || (Array.isArray(res) ? res : []);
+      setKnowledgeBases(items);
+    } catch {
+      // Non-fatal
+    } finally {
+      setIsLoadingKBs(false);
+    }
+  }, []);
+
   // Open Edit Node Modal
   const handleOpenEdit = useCallback((targetNode: FlowNode) => {
     setIsNewNode(false);
@@ -374,6 +481,44 @@ const FlowEditorCanvas: React.FC = () => {
     setConditionVar((targetNode as any).variable || '');
     setConditionBranches((targetNode as any).branches?.length ? (targetNode as any).branches : [{ equals: '', next: '' }]);
     setConditionDefault((targetNode as any).default || '');
+
+    // AI Agent fields
+    if (targetNode.type === 'ai_agent') {
+      setAiKbId(targetNode.knowledgeBaseId || '');
+      setAiQueryVar(targetNode.queryVariable || 'last_message');
+      setAiPrompt(targetNode.prompt || '');
+      setAiSaveResponseAs(targetNode.saveAs || targetNode.saveResponseAs || 'ai_response');
+      setAiSendImmediately(targetNode.sendImmediately !== false);
+      setAiFallbackThreshold(targetNode.fallbackThreshold ?? 0.2);
+    } else {
+      setAiKbId(knowledgeBases[0]?.id || '');
+      setAiQueryVar('last_message');
+      setAiPrompt('');
+      setAiSaveResponseAs('ai_response');
+      setAiSendImmediately(true);
+      setAiFallbackThreshold(0.2);
+    }
+
+    // Intent Router fields
+    if (targetNode.type === 'intent_router') {
+      setIntentInputVar(targetNode.inputVariable || 'last_message');
+      setIntentBranches(targetNode.branches?.length ? targetNode.branches : [
+        { intent: 'support', next: '' },
+        { intent: 'sales', next: '' },
+      ]);
+      setIntentDefault(targetNode.default || '');
+      setIntentSaveIntentAs(targetNode.saveIntentAs || 'detected_intent');
+      setIntentSaveSentimentAs(targetNode.saveSentimentAs || 'detected_sentiment');
+    } else {
+      setIntentInputVar('last_message');
+      setIntentBranches([
+        { intent: 'support', next: '' },
+        { intent: 'sales', next: '' },
+      ]);
+      setIntentDefault('');
+      setIntentSaveIntentAs('detected_intent');
+      setIntentSaveSentimentAs('detected_sentiment');
+    }
 
     if (targetNode.type === 'template') {
       setTemplateName(targetNode.templateName || '');
@@ -398,7 +543,7 @@ const FlowEditorCanvas: React.FC = () => {
     }
 
     setIsModalOpen(true);
-  }, []);
+  }, [knowledgeBases]);
 
   // When a user picks an approved template from Meta catalog
   const handleSelectTemplate = (selectedTplName: string) => {
@@ -511,7 +656,7 @@ const FlowEditorCanvas: React.FC = () => {
       setEdges(generatedEdges);
       setEntryNodeId(entryId);
 
-      await loadAvailableTemplates();
+      await Promise.all([loadAvailableTemplates(), loadAvailableKnowledgeBases()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load flow', 'error');
       navigate('/flows');
@@ -531,7 +676,21 @@ const FlowEditorCanvas: React.FC = () => {
       if (params.sourceHandle === 'delivered') edgeLabel = 'Delivered';
       else if (params.sourceHandle === 'failed') edgeLabel = 'Failed';
       else if (params.sourceHandle === 'continue') edgeLabel = 'Continue';
-      else if (params.sourceHandle?.startsWith('btn_')) {
+      else if (params.sourceHandle === 'fallback') edgeLabel = 'On Fallback';
+      else if (params.sourceHandle === 'default') edgeLabel = 'Default';
+      else if (params.sourceHandle?.startsWith('intent_')) {
+        const iIdx = Number(params.sourceHandle.replace('intent_', ''));
+        const sourceNode = nodes.find((n) => n.id === params.source)?.data.node;
+        if (sourceNode?.type === 'intent_router' && sourceNode.branches?.[iIdx]) {
+          edgeLabel = `Intent: "${sourceNode.branches[iIdx].intent}"`;
+        }
+      } else if (params.sourceHandle?.startsWith('branch_')) {
+        const bIdx = Number(params.sourceHandle.replace('branch_', ''));
+        const sourceNode = nodes.find((n) => n.id === params.source)?.data.node;
+        if (sourceNode?.type === 'condition' && sourceNode.branches?.[bIdx]) {
+          edgeLabel = `== "${sourceNode.branches[bIdx].equals}"`;
+        }
+      } else if (params.sourceHandle?.startsWith('btn_')) {
         const bIdx = Number(params.sourceHandle.replace('btn_', ''));
         const sourceNode = nodes.find((n) => n.id === params.source)?.data.node;
         if (sourceNode?.type === 'template' && sourceNode.buttons?.[bIdx]) {
@@ -593,6 +752,32 @@ const FlowEditorCanvas: React.FC = () => {
         break;
       case 'condition':
         newNodeData = { id: generatedId, type: 'condition', variable: 'userChoice', branches: [{ equals: '1', next: '' }] };
+        break;
+      case 'ai_agent':
+        newNodeData = {
+          id: generatedId,
+          type: 'ai_agent',
+          knowledgeBaseId: knowledgeBases[0]?.id || '',
+          queryVariable: 'last_message',
+          prompt: '',
+          saveResponseAs: 'ai_response',
+          sendImmediately: true,
+          fallbackThreshold: 0.2,
+        };
+        break;
+      case 'intent_router':
+        newNodeData = {
+          id: generatedId,
+          type: 'intent_router',
+          inputVariable: 'last_message',
+          branches: [
+            { intent: 'support', next: '' },
+            { intent: 'sales', next: '' },
+          ],
+          default: '',
+          saveIntentAs: 'detected_intent',
+          saveSentimentAs: 'detected_sentiment',
+        };
         break;
       case 'action':
         newNodeData = { id: generatedId, type: 'action', action: 'webhook', url: 'https://api.example.com/webhook' };
@@ -695,6 +880,30 @@ const FlowEditorCanvas: React.FC = () => {
           action: 'webhook',
           url: nodeUrl.trim(),
           next: nodeNext.trim() || undefined,
+        };
+        break;
+      case 'ai_agent':
+        updatedNode = {
+          id: editingNodeId,
+          type: 'ai_agent',
+          knowledgeBaseId: aiKbId.trim() || undefined,
+          queryVariable: aiQueryVar.trim() || 'last_message',
+          prompt: aiPrompt.trim() || undefined,
+          saveResponseAs: aiSaveResponseAs.trim() || 'ai_response',
+          sendImmediately: aiSendImmediately,
+          fallbackThreshold: Number(aiFallbackThreshold) || 0.2,
+          next: nodeNext.trim() || undefined,
+        };
+        break;
+      case 'intent_router':
+        updatedNode = {
+          id: editingNodeId,
+          type: 'intent_router',
+          inputVariable: intentInputVar.trim() || 'last_message',
+          branches: intentBranches.filter((b) => b.intent.trim()),
+          default: intentDefault.trim() || undefined,
+          saveIntentAs: intentSaveIntentAs.trim() || undefined,
+          saveSentimentAs: intentSaveSentimentAs.trim() || undefined,
         };
         break;
       case 'handoff':
@@ -900,8 +1109,8 @@ const FlowEditorCanvas: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={`Configure Node: ${editingNodeId}`}
-        description="Set up step properties, Meta approved WhatsApp templates, delayed queue timers, and retry rules."
-        maxWidth={nodeType === 'template' ? '4xl' : 'lg'}
+        description="Set up step properties, Meta approved WhatsApp templates, AI RAG agents, intent routers, delayed timers, and retry rules."
+        maxWidth={nodeType === 'template' || nodeType === 'ai_agent' || nodeType === 'intent_router' ? '2xl' : 'lg'}
       >
         <form onSubmit={handleSaveModal} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -920,6 +1129,8 @@ const FlowEditorCanvas: React.FC = () => {
                 <option value="wait">Wait / Delay Queue (BullMQ)</option>
                 <option value="input">User Input</option>
                 <option value="condition">Condition Branch</option>
+                <option value="ai_agent">AI Agent (RAG Knowledge Base)</option>
+                <option value="intent_router">Intent Router (NLU / Classification)</option>
                 <option value="action">Webhook Action</option>
                 <option value="handoff">Human Handoff</option>
                 <option value="end">End Flow</option>
@@ -1566,6 +1777,213 @@ const FlowEditorCanvas: React.FC = () => {
               onChange={(e) => setNodeUrl(e.target.value)}
               required
             />
+          )}
+
+          {/* Form fields: AI Agent (RAG Knowledge Base) */}
+          {nodeType === 'ai_agent' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-violet-50/80 rounded-2xl border border-violet-200/80 space-y-1">
+                <div className="flex items-center gap-2 text-violet-900 font-bold text-xs">
+                  <Brain className="w-4 h-4 text-violet-600" />
+                  RAG Knowledge Base Agent
+                </div>
+                <p className="text-[11px] text-violet-700">
+                  Retrieves semantic context chunks from your vector knowledge base and generates an AI answer using Claude/GPT.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Knowledge Base Source <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={aiKbId}
+                  onChange={(e) => setAiKbId(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white focus:outline-hidden focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                >
+                  <option value="">-- Select Knowledge Base --</option>
+                  {knowledgeBases.map((kb) => (
+                    <option key={kb.id} value={kb.id}>
+                      {kb.name} ({kb.documentCount || 0} docs, {kb.embeddingModel || 'text-embedding-3-small'})
+                    </option>
+                  ))}
+                </select>
+                {knowledgeBases.length === 0 && !isLoadingKBs && (
+                  <p className="text-[11px] text-amber-700 mt-1">
+                    No knowledge bases found. You can create one in{' '}
+                    <a href="/knowledge-bases" target="_blank" rel="noreferrer" className="underline font-semibold">
+                      AI Knowledge Base
+                    </a>.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Query Variable"
+                  placeholder="last_message"
+                  value={aiQueryVar}
+                  onChange={(e) => setAiQueryVar(e.target.value)}
+                  helperText="Variable containing user question"
+                />
+                <Input
+                  label="Save Response As"
+                  placeholder="ai_response"
+                  value={aiSaveResponseAs}
+                  onChange={(e) => setAiSaveResponseAs(e.target.value)}
+                  helperText="Stores AI output in flow context"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  System Persona & Prompt Override (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="You are a helpful customer support agent for our company. Keep answers concise, polite, and directly address customer questions using the knowledge base context."
+                  className="w-full rounded-xl border border-gray-200 p-2.5 text-xs focus:outline-hidden focus:ring-2 focus:ring-violet-500/20 focus:border-violet-600"
+                />
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  Leave blank to use default knowledge base system instructions.
+                </p>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                    Confidence Fallback Threshold
+                  </label>
+                  <span className="font-mono text-xs font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded border border-violet-200">
+                    {aiFallbackThreshold.toFixed(2)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.0"
+                  max="1.0"
+                  step="0.05"
+                  value={aiFallbackThreshold}
+                  onChange={(e) => setAiFallbackThreshold(parseFloat(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>0.0 (Lenient / Always Answer)</span>
+                  <span>0.5 (Balanced)</span>
+                  <span>1.0 (Strict / High Match Only)</span>
+                </div>
+                <p className="text-[10px] text-gray-500">
+                  If knowledge base similarity is below this score, flow routes to the <code className="text-amber-700 font-bold">Fallback</code> handle.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 p-2.5 rounded-xl border border-gray-200 bg-white">
+                <input
+                  type="checkbox"
+                  id="aiSendImmediately"
+                  checked={aiSendImmediately}
+                  onChange={(e) => setAiSendImmediately(e.target.checked)}
+                  className="w-4 h-4 rounded text-violet-600 focus:ring-violet-500"
+                />
+                <label htmlFor="aiSendImmediately" className="text-xs text-gray-700 font-medium cursor-pointer">
+                  Automatically send response message directly to WhatsApp recipient
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Form fields: Intent Router (NLU / Intent Classifier) */}
+          {nodeType === 'intent_router' && (
+            <div className="space-y-4">
+              <div className="p-3 bg-fuchsia-50/80 rounded-2xl border border-fuchsia-200/80 space-y-1">
+                <div className="flex items-center gap-2 text-fuchsia-900 font-bold text-xs">
+                  <Split className="w-4 h-4 text-fuchsia-600" />
+                  Intent Router (Zero-Shot NLU Classifier)
+                </div>
+                <p className="text-[11px] text-fuchsia-700">
+                  Analyzes incoming text with zero-shot classification and dynamically branches to target nodes based on customer intent.
+                </p>
+              </div>
+
+              <Input
+                label="Input Variable"
+                placeholder="last_message"
+                value={intentInputVar}
+                onChange={(e) => setIntentInputVar(e.target.value)}
+                helperText="Variable containing customer message to classify"
+              />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-gray-700">
+                    Intent Branches
+                  </label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => setIntentBranches([...intentBranches, { intent: '', next: '' }])}
+                    icon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    Add Intent
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {intentBranches.map((branch, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-2 rounded-xl bg-gray-50 border border-gray-200">
+                      <span className="text-[11px] font-bold text-fuchsia-800 w-6 text-center">
+                        #{idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="e.g. sales, support, pricing, billing, speak_to_human"
+                        value={branch.intent}
+                        onChange={(e) => {
+                          const copy = [...intentBranches];
+                          copy[idx].intent = e.target.value;
+                          setIntentBranches(copy);
+                        }}
+                        className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white focus:outline-hidden focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIntentBranches(intentBranches.filter((_, i) => i !== idx))}
+                        className="p-1 text-gray-400 hover:text-rose-600 transition-colors"
+                        title="Remove Intent"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {intentBranches.length === 0 && (
+                    <p className="text-xs text-gray-400 text-center py-2">
+                      No intent branches configured. Click "Add Intent" above.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                <Input
+                  label="Save Detected Intent As"
+                  placeholder="detected_intent"
+                  value={intentSaveIntentAs}
+                  onChange={(e) => setIntentSaveIntentAs(e.target.value)}
+                  helperText="Context variable for intent"
+                />
+                <Input
+                  label="Save Detected Sentiment As"
+                  placeholder="detected_sentiment"
+                  value={intentSaveSentimentAs}
+                  onChange={(e) => setIntentSaveSentimentAs(e.target.value)}
+                  helperText="positive / neutral / negative"
+                />
+              </div>
+            </div>
           )}
 
           <div className="flex items-center justify-between pt-4 border-t border-gray-100">

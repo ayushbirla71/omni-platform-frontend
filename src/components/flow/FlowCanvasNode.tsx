@@ -18,6 +18,9 @@ import {
   Trash2,
   Edit2,
   Flag,
+  Brain,
+  Split,
+  ShieldAlert,
 } from 'lucide-react';
 import type { FlowNode } from '../../types';
 import { Badge } from '../common/Badge';
@@ -48,6 +51,10 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
         return <GitBranch className="w-4 h-4 text-orange-600" />;
       case 'action':
         return <Globe className="w-4 h-4 text-indigo-600" />;
+      case 'ai_agent':
+        return <Brain className="w-4 h-4 text-violet-600" />;
+      case 'intent_router':
+        return <Split className="w-4 h-4 text-fuchsia-600" />;
       case 'handoff':
         return <UserCheck className="w-4 h-4 text-rose-600" />;
       case 'end':
@@ -69,6 +76,10 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
         return <Badge variant="warning" size="sm">Condition</Badge>;
       case 'action':
         return <Badge variant="secondary" size="sm">Webhook</Badge>;
+      case 'ai_agent':
+        return <Badge variant="purple" size="sm">AI Agent (RAG)</Badge>;
+      case 'intent_router':
+        return <Badge variant="secondary" size="sm">Intent Router</Badge>;
       case 'handoff':
         return <Badge variant="danger" size="sm">Handoff</Badge>;
       case 'end':
@@ -250,6 +261,43 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
           </div>
         )}
 
+        {node.type === 'ai_agent' && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold text-violet-900 uppercase tracking-wider bg-violet-100/90 px-1.5 py-0.5 rounded border border-violet-200">
+                KB RAG
+              </span>
+              <span className="font-mono text-[10px] text-violet-950 font-semibold truncate max-w-[170px]" title={node.knowledgeBaseId}>
+                KB: {node.knowledgeBaseId ? node.knowledgeBaseId.substring(0, 12) + '...' : 'Not Configured'}
+              </span>
+            </div>
+            {node.prompt && (
+              <p className="text-[10px] text-gray-700 italic line-clamp-2 bg-gray-50/80 p-1 rounded border border-gray-100">
+                "{node.prompt}"
+              </p>
+            )}
+            <div className="flex items-center justify-between text-[10px] text-gray-500 pt-0.5">
+              <span className="truncate max-w-[130px]">
+                Var: <code className="font-mono text-violet-700 font-bold">{node.queryVariable || 'last_message'}</code>
+              </span>
+              <span className="text-[10px] bg-violet-50 text-violet-800 px-1 py-0.5 rounded font-mono">
+                Min: {node.fallbackThreshold ?? 0.2}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {node.type === 'intent_router' && (
+          <div className="space-y-1">
+            <p className="text-[11px] text-gray-700">
+              Route Input: <code className="font-mono bg-fuchsia-50 text-fuchsia-900 px-1 rounded font-bold">{node.inputVariable || 'last_message'}</code>
+            </p>
+            <p className="text-[10px] text-gray-500">
+              {node.branches?.length || 0} intent branches classified
+            </p>
+          </div>
+        )}
+
         {node.type === 'handoff' && (
           <p className="text-[11px] text-rose-700 font-semibold flex items-center gap-1">
             <UserCheck className="w-3 h-3" /> Hands off to human agent
@@ -327,7 +375,66 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
         </div>
       )}
 
-      {/* 2. Condition Node: Branch Ports */}
+      {/* 2. AI Agent Node: Answered Continue vs Low-Confidence Fallback Ports */}
+      {node.type === 'ai_agent' && (
+        <div className="pt-2 pb-2 px-3 bg-gray-50/60 rounded-b-2xl border-t border-gray-100 space-y-1.5">
+          {/* Answered & Continue Port */}
+          <div className="relative flex items-center justify-between text-[10px] text-violet-700 py-0.5">
+            <span className="flex items-center gap-1 font-semibold">
+              <Sparkles className="w-3 h-3 text-violet-500" /> Answered (High Conf)
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="continue"
+              className="!right-[-7px] w-2.5 h-2.5 bg-violet-600 border-2 border-white rounded-full hover:scale-125 transition-transform"
+            />
+          </div>
+
+          {/* Low Confidence Fallback Port */}
+          <div className="relative flex items-center justify-between text-[10px] text-amber-700 py-0.5">
+            <span className="flex items-center gap-1 font-semibold">
+              <ShieldAlert className="w-3 h-3 text-amber-500" /> On Fallback (&lt;{node.fallbackThreshold ?? 0.2})
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="fallback"
+              className="!right-[-7px] w-2.5 h-2.5 bg-amber-500 border-2 border-white rounded-full hover:scale-125 transition-transform"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 3. Intent Router Node: Classified Intent Branches */}
+      {node.type === 'intent_router' && (
+        <div className="pt-2 pb-2 px-3 bg-gray-50/60 rounded-b-2xl border-t border-gray-100 space-y-1.5">
+          {node.branches?.map((branch, i) => (
+            <div key={i} className="relative flex items-center justify-between text-[10px] text-fuchsia-900 py-0.5">
+              <span className="font-semibold truncate max-w-[190px]">
+                🎯 Intent: "{branch.intent}"
+              </span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={`intent_${i}`}
+                className="!right-[-7px] w-2.5 h-2.5 bg-fuchsia-600 border-2 border-white rounded-full hover:scale-125 transition-transform"
+              />
+            </div>
+          ))}
+          <div className="relative flex items-center justify-between text-[10px] text-gray-600 py-0.5">
+            <span className="font-medium">Unrecognized / Default</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="default"
+              className="!right-[-7px] w-2.5 h-2.5 bg-gray-400 border-2 border-white rounded-full hover:scale-125 transition-transform"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 4. Condition Node: Branch Ports */}
       {node.type === 'condition' && (
         <div className="pt-2 pb-2 px-3 bg-gray-50/60 rounded-b-2xl border-t border-gray-100 space-y-1.5">
           {node.branches?.map((branch, i) => (
@@ -355,7 +462,7 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
         </div>
       )}
 
-      {/* 3. Wait / Action / Input Node Single Output Port */}
+      {/* 5. Wait / Action / Input Node Single Output Port */}
       {(node.type === 'wait' || node.type === 'input' || node.type === 'action') && (
         <div className="pt-2 pb-2 px-3 bg-gray-50/60 rounded-b-2xl border-t border-gray-100">
           <div className="relative flex items-center justify-between text-[10px] text-gray-700 py-0.5">

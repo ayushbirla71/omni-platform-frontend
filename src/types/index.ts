@@ -151,7 +151,17 @@ export interface Message {
 }
 
 // Flow Engine & Visual Graph Canvas
-export type FlowNodeType = 'message' | 'input' | 'condition' | 'action' | 'template' | 'wait' | 'handoff' | 'end';
+export type FlowNodeType =
+  | 'message'
+  | 'input'
+  | 'condition'
+  | 'action'
+  | 'template'
+  | 'wait'
+  | 'ai_agent'
+  | 'intent_router'
+  | 'handoff'
+  | 'end';
 
 export interface NodePort {
   id: string;
@@ -262,6 +272,34 @@ export interface WaitNode {
   position?: NodePosition;
 }
 
+export interface AIAgentNode {
+  id: string;
+  type: 'ai_agent';
+  knowledgeBaseId?: string;
+  queryVariable?: string;
+  prompt?: string;
+  saveResponseAs?: string;
+  saveAs?: string;
+  sendImmediately?: boolean;
+  fallbackThreshold?: number;
+  onFallback?: string;
+  next?: string;
+  ports?: NodePort[];
+  position?: NodePosition;
+}
+
+export interface IntentRouterNode {
+  id: string;
+  type: 'intent_router';
+  inputVariable?: string;
+  branches: { intent: string; next: string }[];
+  default?: string;
+  saveIntentAs?: string;
+  saveSentimentAs?: string;
+  ports?: NodePort[];
+  position?: NodePosition;
+}
+
 export interface HandoffNode {
   id: string;
   type: 'handoff';
@@ -276,7 +314,17 @@ export interface EndNode {
   position?: NodePosition;
 }
 
-export type FlowNode = MessageNode | InputNode | ConditionNode | ActionNode | TemplateNode | WaitNode | HandoffNode | EndNode;
+export type FlowNode =
+  | MessageNode
+  | InputNode
+  | ConditionNode
+  | ActionNode
+  | TemplateNode
+  | WaitNode
+  | AIAgentNode
+  | IntentRouterNode
+  | HandoffNode
+  | EndNode;
 
 export interface FlowDefinition {
   entryNodeId: string;
@@ -554,5 +602,128 @@ export interface PaymentTransaction {
   raw_response?: Record<string, any>;
   createdAt?: string;
   created_at?: string;
+}
+
+// AI Knowledge Base & RAG Vector Store
+export interface KnowledgeBase {
+  id: string;
+  tenantId?: string;
+  tenant_id?: string;
+  name: string;
+  description?: string | null;
+  embeddingModel?: string;
+  embedding_model?: string;
+  vectorDimension?: number;
+  vector_dimension?: number;
+  docCount?: number;
+  doc_count?: number;
+  documentCount?: number;
+  chunkCount?: number;
+  chunk_count?: number;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  knowledgeBaseId?: string;
+  knowledge_base_id?: string;
+  title: string;
+  sourceType?: 'text' | 'pdf' | 'markdown' | 'url';
+  source_type?: 'text' | 'pdf' | 'markdown' | 'url';
+  content?: string;
+  metadata?: Record<string, any>;
+  chunkCount?: number;
+  chunk_count?: number;
+  status?: 'ready' | 'processing' | 'error';
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
+}
+
+export interface KnowledgeChunk {
+  id: string;
+  documentId?: string;
+  document_id?: string;
+  knowledgeBaseId?: string;
+  knowledge_base_id?: string;
+  chunkIndex?: number;
+  chunk_index?: number;
+  content: string;
+  tokenCount?: number;
+  token_count?: number;
+  similarity?: number;
+  createdAt?: string;
+  created_at?: string;
+}
+
+export interface KnowledgeBaseStats {
+  totalBases: number;
+  totalDocuments: number;
+  totalChunks: number;
+  totalQueries: number;
+}
+
+// AI Copilot & Inbox Assistant
+export interface ReplySuggestion {
+  text: string;
+  confidence: number;
+  category: 'direct_resolution' | 'clarification' | 'closing' | 'general';
+}
+
+export interface CopilotSuggestionsResponse {
+  suggestions: ReplySuggestion[];
+  contextSummary?: string;
+}
+
+export interface ConversationSummary {
+  summary: string;
+  sentiment: 'positive' | 'neutral' | 'negative' | 'urgent' | 'mixed';
+  intent?: string;
+  mainIntent?: string;
+  keyPoints: string[];
+  suggestedAction?: string;
+  actionItems?: string[];
+}
+
+export interface RephraseResult {
+  rephrased: string;
+  originalText?: string;
+  tone?: string;
+}
+
+export interface IntentClassification {
+  intent: string;
+  sentiment: 'positive' | 'neutral' | 'negative' | 'urgent';
+  confidence: number;
+  urgency: 'low' | 'medium' | 'high' | 'critical';
+  entities?: Record<string, any>;
+}
+
+export interface RAGQueryResult {
+  answer: string;
+  confidence: number;
+  usedSources: Array<{
+    documentTitle: string;
+    content: string;
+    similarity: number;
+  }>;
+  latencyMs: number;
+}
+
+export interface AILogEntry {
+  id: string;
+  tenant_id: string;
+  feature: string;
+  model: string;
+  provider: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  latency_ms: number;
+  metadata: Record<string, any>;
+  created_at: string;
 }
 

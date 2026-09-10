@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   ChevronRight,
   Shield,
+  Brain,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn } from '../../lib/utils';
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ is
     { name: 'Deals & CRM', href: '/deals', icon: KanbanSquare },
     { name: 'Products', href: '/products', icon: Package },
     { name: 'Orders', href: '/orders', icon: ShoppingBag },
+    { name: 'AI Knowledge Base', href: '/knowledge-bases', icon: Brain },
     { name: 'Global Search', href: '/search', icon: Search },
   ];
 

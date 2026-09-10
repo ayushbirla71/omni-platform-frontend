@@ -24,6 +24,16 @@ import type {
   Order,
   OrderStats,
   PaymentTransaction,
+  KnowledgeBase,
+  KnowledgeDocument,
+  KnowledgeChunk,
+  ReplySuggestion,
+  CopilotSuggestionsResponse,
+  ConversationSummary,
+  RephraseResult,
+  IntentClassification,
+  RAGQueryResult,
+  AILogEntry,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -278,4 +288,94 @@ export const paymentsApi = {
   recordManualPayment: (data: { orderId: string; amount: number; currency?: string; reference?: string }) =>
     apiClient.post<{ transaction: PaymentTransaction }>('/payments/manual', data),
 };
+
+// ==================== KNOWLEDGE BASE API ====================
+export const knowledgeBasesApi = {
+  list: () =>
+    apiClient.get<{ items: KnowledgeBase[] }>('/knowledge-bases'),
+
+  get: (id: string) =>
+    apiClient.get<KnowledgeBase>(`/knowledge-bases/${id}`),
+
+  create: (data: {
+    name: string;
+    description?: string;
+    system_prompt?: string;
+    provider?: string;
+    model?: string;
+    temperature?: number;
+    is_active?: boolean;
+    metadata?: Record<string, any>;
+  }) => apiClient.post<KnowledgeBase>('/knowledge-bases', data),
+
+  update: (
+    id: string,
+    data: {
+      name?: string;
+      description?: string;
+      system_prompt?: string;
+      provider?: string;
+      model?: string;
+      temperature?: number;
+      is_active?: boolean;
+      metadata?: Record<string, any>;
+    }
+  ) => apiClient.patch<KnowledgeBase>(`/knowledge-bases/${id}`, data),
+
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/knowledge-bases/${id}`),
+
+  listDocuments: (knowledgeBaseId: string) =>
+    apiClient.get<{ items: KnowledgeDocument[] }>(`/knowledge-bases/${knowledgeBaseId}/documents`),
+
+  addDocument: (
+    knowledgeBaseId: string,
+    data: {
+      title: string;
+      raw_content: string;
+      source_type?: 'text' | 'pdf' | 'markdown' | 'url';
+      source_url?: string;
+      metadata?: Record<string, any>;
+    }
+  ) => apiClient.post<KnowledgeDocument>(`/knowledge-bases/${knowledgeBaseId}/documents`, data),
+
+  deleteDocument: (knowledgeBaseId: string, documentId: string) =>
+    apiClient.delete<{ success: boolean }>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`),
+
+  searchChunks: (
+    knowledgeBaseId: string,
+    data: { query: string; limit?: number }
+  ) => apiClient.post<{ results: KnowledgeChunk[] }>(`/knowledge-bases/${knowledgeBaseId}/search`, data),
+};
+
+// ==================== AI COPILOT & AGENT API ====================
+export const aiCopilotApi = {
+  suggestReplies: (data: { conversationId: string; customContext?: string }) =>
+    apiClient.post<CopilotSuggestionsResponse>('/ai/copilot/suggest', data),
+
+  summarizeConversation: (data: { conversationId: string }) =>
+    apiClient.post<ConversationSummary>('/ai/copilot/summarize', data),
+
+  rephraseMessage: (data: {
+    text: string;
+    tone?: 'professional' | 'friendly' | 'concise' | 'bullet_points' | 'sales_pitch';
+    targetLanguage?: string;
+  }) => apiClient.post<RephraseResult>('/ai/copilot/rephrase', data),
+
+  classifyIntent: (data: { text: string }) =>
+    apiClient.post<IntentClassification>('/ai/classify', data),
+
+  queryRAG: (data: {
+    knowledgeBaseId: string;
+    query: string;
+    conversationId?: string;
+    topK?: number;
+    threshold?: number;
+    customSystemPrompt?: string;
+  }) => apiClient.post<RAGQueryResult>('/ai/rag/query', data),
+
+  getLogs: (params?: { limit?: number; feature?: string }) =>
+    apiClient.get<{ logs: AILogEntry[] }>('/ai/logs', params),
+};
+
 
