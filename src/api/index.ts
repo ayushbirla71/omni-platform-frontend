@@ -198,6 +198,9 @@ export const systemApi = {
 
   clearLogs: () => apiClient.post<{ success: boolean; message: string }>('/system/logs/clear'),
 
-  getDownloadLogUrl: (type: 'app' | 'error' = 'app') => `/api/system/logs/download?type=${type}`,
+  getDownloadLogUrl: (type: 'app' | 'error' = 'app') => {
+    const token = apiClient.getToken();
+    return `/api/system/logs/download?type=${type}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+  },
 };
 

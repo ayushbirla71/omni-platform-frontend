@@ -1,7 +1,7 @@
 const API_BASE_URL = '/api';
 
 interface ApiRequestOptions extends RequestInit {
-  params?: Record<string, string | number | boolean>;
+  params?: Record<string, string | number | boolean | undefined | null>;
 }
 
 class ApiClient {
@@ -32,11 +32,13 @@ class ApiClient {
     this.onUnauthorized = callback;
   }
 
-  private buildUrl(endpoint: string, params?: Record<string, string | number | boolean>): string {
+  private buildUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>): string {
     const url = new URL(`${this.baseUrl}${endpoint}`, window.location.origin);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.append(key, String(value));
+        if (value !== undefined && value !== null && value !== '') {
+          url.searchParams.append(key, String(value));
+        }
       });
     }
     return url.toString();
@@ -96,7 +98,7 @@ class ApiClient {
     return response.json();
   }
 
-  async get<T>(endpoint: string, params?: Record<string, string | number | boolean>): Promise<T> {
+  async get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>): Promise<T> {
     return this.request<T>(endpoint, { method: 'GET', params });
   }
 
