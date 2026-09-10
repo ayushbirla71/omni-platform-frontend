@@ -66,9 +66,9 @@ export const whatsappOnboardingApi = {
 
   completeCallback: (data: {
     code: string;
-    wabaId: string;
-    phoneNumberId: string;
-    displayName: string;
+    wabaId?: string;
+    phoneNumberId?: string;
+    displayName?: string;
   }) => apiClient.post<Channel>('/whatsapp-onboarding/callback', data),
 };
 
