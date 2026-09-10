@@ -230,6 +230,8 @@ export const ChannelsPage: React.FC = () => {
       return;
     }
 
+    // Reset previous code so we don't accidentally reuse an expired/burned one
+    setEmbeddedForm((prev) => ({ ...prev, code: '' }));
     setIsLaunchingFb(true);
 
     try {
@@ -244,7 +246,7 @@ export const ChannelsPage: React.FC = () => {
               ...prev,
               code: authCode,
             }));
-            showToast('Meta Authorization Code captured successfully!', 'success');
+            showToast('New Meta Authorization Code captured successfully!', 'success');
           } else {
             console.warn('[Meta FB.login] User did not complete login or cancelled:', response);
           }
@@ -317,8 +319,14 @@ export const ChannelsPage: React.FC = () => {
       setEmbeddedForm({ code: '', wabaId: '', phoneNumberId: '', displayName: '' });
       showToast('WhatsApp Business Account connected successfully via Embedded Signup!', 'success');
       loadData();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Onboarding failed', 'error');
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || err instanceof Error ? err.message : 'Onboarding failed';
+      if (errMsg.includes('used') || errMsg.includes('36009') || errMsg.includes('OAuthException')) {
+        setEmbeddedForm((prev) => ({ ...prev, code: '' }));
+        showToast('This Meta authorization code was already used or expired. Please click "Launch Meta Embedded Signup" to generate a fresh one-time code.', 'error');
+      } else {
+        showToast(errMsg, 'error');
+      }
     } finally {
       setIsSubmittingEmbedded(false);
     }
