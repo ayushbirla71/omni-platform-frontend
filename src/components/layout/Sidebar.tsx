@@ -9,6 +9,7 @@ import {
   Megaphone,
   KanbanSquare,
   Search,
+  Terminal,
   LogOut,
   Building2,
   ShieldCheck,
@@ -22,7 +23,7 @@ import { Badge } from '../common/Badge';
 export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
 
-  const navigation = [
+  const baseNav = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Team Inbox', href: '/inbox', icon: MessageSquare },
     { name: 'Channels', href: '/channels', icon: Radio },
@@ -32,6 +33,11 @@ export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ is
     { name: 'Deals & CRM', href: '/deals', icon: KanbanSquare },
     { name: 'Global Search', href: '/search', icon: Search },
   ];
+
+  const navigation =
+    user?.role === 'owner' || user?.role === 'admin'
+      ? [...baseNav, { name: 'System Logs', href: '/system-logs', icon: Terminal }]
+      : baseNav;
 
   return (
     <>

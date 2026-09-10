@@ -17,6 +17,9 @@ import type {
   Campaign,
   SearchResults,
   DeepLinkResponse,
+  SystemStatus,
+  SystemLogsResponse,
+  SystemErrorsResponse,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -182,3 +185,19 @@ export const searchApi = {
 export const mediaApi = {
   getDownloadUrl: (key: string) => apiClient.get<{ downloadUrl: string }>(`/media/download-url`, { key }),
 };
+
+// ==================== SYSTEM & LOGS API ====================
+export const systemApi = {
+  getStatus: () => apiClient.get<SystemStatus>('/system/status'),
+
+  getLogs: (params?: { level?: string; module?: string; search?: string; limit?: number }) =>
+    apiClient.get<SystemLogsResponse>('/system/logs', params),
+
+  getErrors: (params?: { search?: string; limit?: number }) =>
+    apiClient.get<SystemErrorsResponse>('/system/errors', params),
+
+  clearLogs: () => apiClient.post<{ success: boolean; message: string }>('/system/logs/clear'),
+
+  getDownloadLogUrl: (type: 'app' | 'error' = 'app') => `/api/system/logs/download?type=${type}`,
+};
+

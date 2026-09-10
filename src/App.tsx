@@ -15,6 +15,7 @@ import { CampaignsPage } from './pages/CampaignsPage';
 import { NewCampaignPage } from './pages/NewCampaignPage';
 import { DealsPage } from './pages/DealsPage';
 import { SearchPage } from './pages/SearchPage';
+import { SystemLogsPage } from './pages/SystemLogsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
@@ -109,6 +110,7 @@ function App() {
               <Route path="campaigns/new" element={<NewCampaignPage />} />
               <Route path="deals" element={<DealsPage />} />
               <Route path="search" element={<SearchPage />} />
+              <Route path="system-logs" element={<SystemLogsPage />} />
             </Route>
 
             {/* Catch-all redirect */}

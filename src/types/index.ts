@@ -388,3 +388,61 @@ export interface DeepLinkResponse {
   link: string;
   qrCodeDataUrl: string;
 }
+
+// System Logs & Diagnostics
+export type SystemLogLevel = "debug" | "info" | "warn" | "error" | "fatal";
+
+export interface SystemLogEntry {
+  id: string;
+  timestamp: string;
+  level: SystemLogLevel;
+  module?: string;
+  message: string;
+  reqId?: string;
+  tenantId?: string;
+  userId?: string;
+  durationMs?: number;
+  statusCode?: number;
+  meta?: Record<string, any>;
+  error?: {
+    name?: string;
+    message?: string;
+    stack?: string;
+    code?: string | number;
+    details?: any;
+  };
+}
+
+export interface SystemStatus {
+  status: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+  uptimeSeconds: number;
+  database: string;
+  memory: {
+    rssMb: number;
+    heapTotalMb: number;
+    heapUsedMb: number;
+    externalMb: number;
+  };
+  logStats: {
+    inMemoryLogsCount: number;
+    inMemoryErrorsCount: number;
+  };
+  environment: string;
+  timestamp: string;
+}
+
+export interface SystemLogsResponse {
+  total: number;
+  limit: number;
+  logs: SystemLogEntry[];
+}
+
+export interface SystemErrorsResponse {
+  total: number;
+  limit: number;
+  errors: SystemLogEntry[];
+}
+
