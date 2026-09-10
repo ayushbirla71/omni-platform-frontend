@@ -334,12 +334,14 @@ export const ChannelsPage: React.FC = () => {
   // Open QR Code modal
   const handleOpenQrModal = async (channel: Channel) => {
     setActiveChannel(channel);
+    setDeepLinkData(null);
     setIsQrModalOpen(true);
     try {
       const data = await channelsApi.getDeepLink(channel.id);
       setDeepLinkData(data);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to generate deep link', 'error');
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to generate deep link');
+      showToast(errMsg, 'error');
     }
   };
 
@@ -864,8 +866,8 @@ export const ChannelsPage: React.FC = () => {
       <Modal
         isOpen={isQrModalOpen}
         onClose={() => setIsQrModalOpen(false)}
-        title="Channel QR Code & Deep Link"
-        description="Share this link or QR code with your customers"
+        title={`${activeChannel?.displayName || activeChannel?.display_name || 'Channel'} - QR Code & Deep Link`}
+        description="Share this link or QR code with your customers to start conversations"
       >
         <div className="space-y-6 text-center">
           {deepLinkData ? (
