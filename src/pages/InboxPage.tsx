@@ -47,6 +47,7 @@ export const InboxPage: React.FC = () => {
   const [isLoadingList, setIsLoadingList] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
 
   // Modals
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
@@ -83,16 +84,21 @@ export const InboxPage: React.FC = () => {
     loadConversations();
   }, [filterStatus]);
 
-  // Load active conversation & messages when selectedConvId changes
+  // Keep active conversation updated from list when conversations list refreshes
+  useEffect(() => {
+    if (selectedConvId && conversations.length > 0) {
+      const conv = conversations.find((c) => c.id === selectedConvId);
+      if (conv) setActiveConversation(conv);
+    }
+  }, [selectedConvId, conversations]);
+
+  // Load messages & contact when selectedConvId changes
   useEffect(() => {
     if (!selectedConvId) {
       setActiveConversation(null);
       setMessages([]);
       return;
     }
-
-    const conv = conversations.find((c) => c.id === selectedConvId);
-    if (conv) setActiveConversation(conv);
 
     const loadMessagesAndContact = async () => {
       setIsLoadingMessages(true);
@@ -102,13 +108,14 @@ export const InboxPage: React.FC = () => {
         setTimeout(scrollToBottom, 50);
 
         // Load contact details & deals
-        if (conv?.contactId) {
+        const currentConv = conversations.find((c) => c.id === selectedConvId);
+        if (currentConv?.contactId) {
           const contactList = await contactsApi.list(100, 0);
-          const currentContact = contactList.find((c) => c.id === conv.contactId);
+          const currentContact = contactList.find((c) => c.id === currentConv.contactId);
           if (currentContact) setContact(currentContact);
 
           const allDeals = await dealsApi.list();
-          setDeals(allDeals.filter((d) => d.contactId === conv.contactId));
+          setDeals(allDeals.filter((d) => d.contactId === currentConv.contactId));
         }
       } catch (err) {
         showToast('Failed to load messages', 'error');
@@ -118,26 +125,35 @@ export const InboxPage: React.FC = () => {
     };
 
     loadMessagesAndContact();
-  }, [selectedConvId, conversations]);
+  }, [selectedConvId]);
 
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!messageText.trim() || !selectedConvId || isSending) return;
+    if (isSendingRef.current || !messageText.trim() || !selectedConvId) return;
 
     const textToSend = messageText.trim();
-    setMessageText('');
+    isSendingRef.current = true;
     setIsSending(true);
+    setMessageText('');
 
     try {
       const sentMsg = await conversationsApi.sendMessage(selectedConvId, textToSend);
       setMessages((prev) => [...prev, sentMsg]);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConvId
+            ? { ...c, lastMessageText: textToSend, lastMessageAt: new Date().toISOString() }
+            : c
+        )
+      );
       setTimeout(scrollToBottom, 50);
       showToast('Message sent', 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to send message', 'error');
       setMessageText(textToSend); // restore on error
     } finally {
+      isSendingRef.current = false;
       setIsSending(false);
     }
   };
@@ -404,16 +420,17 @@ export const InboxPage: React.FC = () => {
               <form onSubmit={handleSendMessage} className="flex items-center gap-2">
                 <input
                   type="text"
-                  placeholder="Type a reply..."
+                  placeholder={isSending ? "Sending message..." : "Type a reply..."}
                   value={messageText}
+                  disabled={isSending}
                   onChange={(e) => setMessageText(e.target.value)}
-                  className="flex-1 px-4 py-2.5 text-xs rounded-xl bg-gray-100 border border-transparent focus:bg-white focus:border-primary-500 focus:outline-none"
+                  className="flex-1 px-4 py-2.5 text-xs rounded-xl bg-gray-100 border border-transparent focus:bg-white focus:border-primary-500 focus:outline-none disabled:opacity-60"
                 />
                 <Button
                   type="submit"
                   variant="primary"
                   size="md"
-                  disabled={!messageText.trim()}
+                  disabled={!messageText.trim() || isSending}
                   isLoading={isSending}
                   icon={<Send className="w-4 h-4" />}
                 >
