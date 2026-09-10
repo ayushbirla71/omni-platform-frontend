@@ -351,8 +351,9 @@ export const ChannelsPage: React.FC = () => {
     try {
       const list = await channelsApi.getTemplates(channel.id);
       setTemplates(list);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to fetch templates', 'error');
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to fetch templates');
+      showToast(errMsg, 'error');
     } finally {
       setIsLoadingTemplates(false);
     }
@@ -918,7 +919,7 @@ export const ChannelsPage: React.FC = () => {
       <Modal
         isOpen={isTemplatesModalOpen}
         onClose={() => setIsTemplatesModalOpen(false)}
-        title={`${activeChannel?.displayName} - WhatsApp Templates`}
+        title={`${activeChannel?.displayName || activeChannel?.display_name || 'WhatsApp'} - Templates`}
         description="View approved message templates from Meta"
         maxWidth="2xl"
       >
