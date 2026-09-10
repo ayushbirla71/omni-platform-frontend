@@ -231,7 +231,7 @@ export const OrdersPage: React.FC = () => {
             </div>
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Total Orders</p>
-              <h3 className="text-lg font-bold text-gray-900">{stats.totalOrders}</h3>
+              <h3 className="text-lg font-bold text-gray-900">{stats.totalOrders ?? 0}</h3>
             </div>
           </Card>
 
@@ -241,7 +241,7 @@ export const OrdersPage: React.FC = () => {
             </div>
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Total Revenue</p>
-              <h3 className="text-lg font-bold text-emerald-700">₹{stats.totalRevenue.toLocaleString()}</h3>
+              <h3 className="text-lg font-bold text-emerald-700">₹{(stats.totalRevenue ?? 0).toLocaleString()}</h3>
             </div>
           </Card>
 
@@ -251,7 +251,7 @@ export const OrdersPage: React.FC = () => {
             </div>
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pending Orders</p>
-              <h3 className="text-lg font-bold text-amber-700">{stats.pendingOrders}</h3>
+              <h3 className="text-lg font-bold text-amber-700">{stats.pendingOrders ?? (stats as any).pendingCount ?? 0}</h3>
             </div>
           </Card>
 
@@ -261,7 +261,9 @@ export const OrdersPage: React.FC = () => {
             </div>
             <div>
               <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Paid / Fulfilled</p>
-              <h3 className="text-lg font-bold text-purple-700">{stats.paidOrders + stats.completedOrders}</h3>
+              <h3 className="text-lg font-bold text-purple-700">
+                {(stats.paidOrders ?? (stats as any).paidCount ?? 0) + (stats.completedOrders ?? (stats as any).completedCount ?? 0)}
+              </h3>
             </div>
           </Card>
         </div>

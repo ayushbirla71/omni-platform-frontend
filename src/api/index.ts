@@ -34,6 +34,20 @@ import type {
   IntentClassification,
   RAGQueryResult,
   AILogEntry,
+  TeamMember,
+  UserRole,
+  UserStatus,
+  ApiKey,
+  CreatedApiKeyResult,
+  WorkspaceUsageSummary,
+  AuditLogsResponse,
+  ContactDataExportBundle,
+  AnalyticsOverview,
+  SlaPerformanceMetrics,
+  TrafficHeatmapCell,
+  FunnelStage,
+  WebhookSubscription,
+  WebhookDeliveryLog,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -377,5 +391,104 @@ export const aiCopilotApi = {
   getLogs: (params?: { limit?: number; feature?: string }) =>
     apiClient.get<{ logs: AILogEntry[] }>('/ai/logs', params),
 };
+
+// ==================== TEAM & RBAC API ====================
+export const teamApi = {
+  list: () =>
+    apiClient.get<TeamMember[]>('/team'),
+
+  invite: (data: { email: string; name?: string; role?: UserRole; password?: string }) =>
+    apiClient.post<TeamMember>('/team/invite', data),
+
+  updateRole: (id: string, role: UserRole) =>
+    apiClient.patch<TeamMember>(`/team/${id}/role`, { role }),
+
+  updateStatus: (id: string, status: UserStatus) =>
+    apiClient.patch<TeamMember>(`/team/${id}/status`, { status }),
+
+  remove: (id: string) =>
+    apiClient.delete<{ message: string; id: string }>(`/team/${id}`),
+};
+
+// ==================== DEVELOPER API KEYS API ====================
+export const apiKeysApi = {
+  list: () =>
+    apiClient.get<ApiKey[]>('/api-keys'),
+
+  create: (data: { name: string; scopes?: string[]; expiresInDays?: number }) =>
+    apiClient.post<CreatedApiKeyResult>('/api-keys', data),
+
+  revoke: (id: string) =>
+    apiClient.delete<{ message: string; id: string }>(`/api-keys/${id}`),
+};
+
+// ==================== BILLING & USAGE API ====================
+export const billingApi = {
+  getUsage: () =>
+    apiClient.get<WorkspaceUsageSummary>('/billing/usage'),
+
+  updatePlan: (planId: string) =>
+    apiClient.post<{ message: string; plan: any }>('/billing/plan', { planId }),
+};
+
+// ==================== AUDIT LOGS API ====================
+export const auditLogsApi = {
+  list: (params?: { action?: string; resourceType?: string; limit?: number; offset?: number }) =>
+    apiClient.get<AuditLogsResponse>('/audit-logs', params),
+};
+
+// ==================== COMPLIANCE & GDPR API ====================
+export const complianceApi = {
+  exportContact: (contactId: string) =>
+    apiClient.post<ContactDataExportBundle>('/compliance/export', { contactId }),
+
+  purgeContact: (contactId: string) =>
+    apiClient.post<{ message: string; deletedItemsCount: { conversations: number; messages: number } }>(
+      '/compliance/purge',
+      { contactId }
+    ),
+};
+
+// ==================== ADVANCED ANALYTICS API ====================
+export const analyticsApi = {
+  getOverview: () =>
+    apiClient.get<AnalyticsOverview>('/analytics/overview'),
+
+  getSlaPerformance: (thresholdSeconds?: number) =>
+    apiClient.get<SlaPerformanceMetrics>('/analytics/sla-performance', { threshold: thresholdSeconds }),
+
+  getTrafficHeatmap: () =>
+    apiClient.get<TrafficHeatmapCell[]>('/analytics/traffic-heatmap'),
+
+  getConversionFunnel: () =>
+    apiClient.get<FunnelStage[]>('/analytics/conversion-funnel'),
+};
+
+// ==================== OUTBOUND WEBHOOKS API ====================
+export const webhooksApi = {
+  listSubscriptions: () =>
+    apiClient.get<WebhookSubscription[]>('/webhooks/subscriptions'),
+
+  getSubscription: (id: string) =>
+    apiClient.get<WebhookSubscription>(`/webhooks/subscriptions/${id}`),
+
+  createSubscription: (data: { name: string; url: string; secret?: string; events?: string[] }) =>
+    apiClient.post<WebhookSubscription>('/webhooks/subscriptions', data),
+
+  updateSubscription: (
+    id: string,
+    data: { name?: string; url?: string; secret?: string; events?: string[]; is_active?: boolean }
+  ) => apiClient.patch<WebhookSubscription>(`/webhooks/subscriptions/${id}`, data),
+
+  deleteSubscription: (id: string) =>
+    apiClient.delete<{ message: string; id: string }>(`/webhooks/subscriptions/${id}`),
+
+  testSubscription: (id: string) =>
+    apiClient.post<{ success: boolean; statusCode?: number; error?: string }>(`/webhooks/subscriptions/${id}/test`),
+
+  listDeliveryLogs: (id: string, limit?: number) =>
+    apiClient.get<WebhookDeliveryLog[]>(`/webhooks/subscriptions/${id}/deliveries`, { limit }),
+};
+
 
 

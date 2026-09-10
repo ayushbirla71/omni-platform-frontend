@@ -727,3 +727,218 @@ export interface AILogEntry {
   created_at: string;
 }
 
+// Phase 7: Scale, Security, Multi-Tenant Compliance & Organization Settings
+export type UserRole = "owner" | "admin" | "agent" | "viewer";
+export type UserStatus = "active" | "deactivated" | "invited";
+
+export interface TeamMember {
+  id: string;
+  tenant_id?: string;
+  tenantId?: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  status: UserStatus;
+  last_login_at?: string | null;
+  lastLoginAt?: string | null;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+}
+
+export interface ApiKey {
+  id: string;
+  tenant_id?: string;
+  tenantId?: string;
+  name: string;
+  key_prefix?: string;
+  keyPrefix?: string;
+  scopes: string[];
+  last_used_at?: string | null;
+  lastUsedAt?: string | null;
+  expires_at?: string | null;
+  expiresAt?: string | null;
+  created_by?: string | null;
+  createdBy?: string | null;
+  is_active?: boolean;
+  isActive?: boolean;
+  created_at?: string;
+  createdAt?: string;
+}
+
+export interface CreatedApiKeyResult extends ApiKey {
+  secretKey: string;
+}
+
+export interface PlanConfig {
+  id: string;
+  name: string;
+  description: string;
+  priceMonthly: number;
+  maxChannels: number;
+  maxContacts: number;
+  maxMonthlyMessages: number;
+  maxMonthlyAiQueries: number;
+  features: string[];
+}
+
+export interface UsageMetric {
+  used: number;
+  limit: number;
+  percentage: number;
+  unit: string;
+}
+
+export interface WorkspaceUsageSummary {
+  tenantId: string;
+  tenantName: string;
+  planId: string;
+  planName: string;
+  planStatus: string;
+  billingCycleEnd: string;
+  metrics: {
+    channels: UsageMetric;
+    contacts: UsageMetric;
+    monthlyMessages: UsageMetric;
+    monthlyAiQueries: UsageMetric;
+  };
+  stats: {
+    totalConversations: number;
+    totalDealsCount: number;
+    totalDealsValue: number;
+    activeAgentsCount: number;
+  };
+  availablePlans: PlanConfig[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  tenant_id?: string;
+  tenantId?: string;
+  user_id?: string | null;
+  userId?: string | null;
+  user_email?: string | null;
+  userEmail?: string | null;
+  action: string;
+  resource_type: string;
+  resourceType?: string;
+  resource_id?: string | null;
+  resourceId?: string | null;
+  details: Record<string, any>;
+  ip_address?: string | null;
+  ipAddress?: string | null;
+  created_at: string;
+  createdAt?: string;
+}
+
+export interface AuditLogsResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  logs: AuditLogEntry[];
+}
+
+export interface ContactDataExportBundle {
+  exportMetadata: {
+    exportDate: string;
+    tenantId: string;
+    contactId: string;
+    requestedBy: string | null;
+    legalBasis: string;
+  };
+  contact: any;
+  conversations: any[];
+  messages: any[];
+  deals: any[];
+  orders: any[];
+}
+
+// Phase 8: Advanced Analytics, Real-Time WebSockets & Outgoing Webhooks
+export interface AnalyticsOverview {
+  totalMessages: number;
+  inboundMessages: number;
+  outboundMessages: number;
+  totalConversations: number;
+  openConversations: number;
+  closedConversations: number;
+  totalContacts: number;
+  totalRevenue: number;
+  totalOrders: number;
+  paidOrders: number;
+  channelDistribution: { channelType: string; count: number }[];
+}
+
+export interface AgentScorecardEntry {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  assignedConversations: number;
+  resolvedConversations: number;
+  avgFirstResponseSeconds: number;
+  avgResolutionSeconds: number;
+}
+
+export interface SlaPerformanceMetrics {
+  avgFirstResponseSeconds: number;
+  avgResolutionSeconds: number;
+  slaBreachCount: number;
+  slaComplianceRate: number;
+  totalResolvedCount: number;
+  agentScorecard: AgentScorecardEntry[];
+}
+
+export interface TrafficHeatmapCell {
+  dayOfWeek: number; // 0=Sun, 6=Sat
+  hourOfDay: number; // 0-23
+  count: number;
+}
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+  conversionRate: number;
+  dropoffRate: number;
+}
+
+export interface WebhookSubscription {
+  id: string;
+  tenant_id?: string;
+  tenantId?: string;
+  name: string;
+  url: string;
+  secret: string;
+  events: string[];
+  is_active: boolean;
+  failure_count: number;
+  last_triggered_at: string | null;
+  last_status_code: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDeliveryLog {
+  id: string;
+  tenant_id: string;
+  subscription_id: string;
+  event: string;
+  payload: any;
+  response_status: number | null;
+  response_body: string | null;
+  duration_ms: number;
+  attempt: number;
+  status: 'success' | 'failed' | 'retrying';
+  created_at: string;
+}
+
+export interface RealtimeMessageEvent<T = any> {
+  event: string;
+  data: T;
+  tenantId: string;
+  targetUserId?: string;
+  conversationId?: string;
+  timestamp: string;
+}
+
+

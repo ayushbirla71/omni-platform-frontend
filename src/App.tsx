@@ -19,6 +19,8 @@ import { OrdersPage } from './pages/OrdersPage';
 import { SearchPage } from './pages/SearchPage';
 import { SystemLogsPage } from './pages/SystemLogsPage';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
@@ -114,7 +116,9 @@ function App() {
               <Route path="deals" element={<DealsPage />} />
               <Route path="products" element={<ProductsPage />} />
               <Route path="orders" element={<OrdersPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="knowledge-bases" element={<KnowledgeBasePage />} />
+              <Route path="settings" element={<SettingsPage />} />
               <Route path="search" element={<SearchPage />} />
               <Route path="system-logs" element={<SystemLogsPage />} />
             </Route>

@@ -35,8 +35,11 @@ import {
   ShieldAlert,
   Copy,
   RotateCcw,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi } from '../api';
+import { useWebSocket } from '../hooks/useWebSocket';
 import type {
   Conversation,
   Message,
@@ -288,7 +291,73 @@ export const InboxPage: React.FC = () => {
     }
   };
 
-  // Periodic background polling for live incoming messages & conversation updates
+  // Realtime WebSocket integration
+  const { isConnected, status: wsStatus, on: onRealtimeEvent } = useWebSocket();
+
+  // Listen for realtime message and conversation events
+  useEffect(() => {
+    // 1. New incoming/outgoing messages
+    const unbindNewMsg = onRealtimeEvent<Message>('message:new', (evt) => {
+      const msg = evt.data;
+      if (!msg) return;
+
+      const convId = msg.conversationId || (msg as any).conversation_id;
+
+      // If active conversation matches, append message
+      if (convId === selectedConvId) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        setTimeout(scrollToBottom, 50);
+      }
+
+      // Update conversations list preview
+      setConversations((prev) => {
+        const found = prev.find((c) => c.id === convId);
+        if (found) {
+          const updated = {
+            ...found,
+            lastMessageText: msg.text || (msg as any).last_message_text || 'New message',
+            lastMessageAt: msg.createdAt || (msg as any).created_at || new Date().toISOString(),
+          };
+          return [updated, ...prev.filter((c) => c.id !== convId)];
+        }
+        return prev;
+      });
+    });
+
+    // 2. Message delivery status changes (sent, delivered, read, failed)
+    const unbindMsgStatus = onRealtimeEvent<{ id: string; status: any }>('message:status', (evt) => {
+      const statusData = evt.data;
+      if (!statusData?.id) return;
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === statusData.id ? { ...m, status: statusData.status } : m))
+      );
+    });
+
+    // 3. Conversation updates (status changes, assignment)
+    const unbindConvUpdate = onRealtimeEvent<Conversation>('conversation:update', (evt) => {
+      const conv = evt.data;
+      if (!conv?.id) return;
+
+      setConversations((prev) =>
+        prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
+      );
+      if (selectedConvId === conv.id) {
+        setActiveConversation((prev) => (prev ? { ...prev, ...conv } : null));
+      }
+    });
+
+    return () => {
+      unbindNewMsg();
+      unbindMsgStatus();
+      unbindConvUpdate();
+    };
+  }, [selectedConvId, onRealtimeEvent]);
+
+  // Periodic background polling fallback for live incoming messages (15s resilient heartbeat)
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
@@ -307,7 +376,7 @@ export const InboxPage: React.FC = () => {
           });
         } catch {}
       }
-    }, 4000);
+    }, 15000);
 
     return () => clearInterval(pollInterval);
   }, [selectedConvId, filterStatus]);
@@ -383,10 +452,35 @@ export const InboxPage: React.FC = () => {
         {/* Header & Filters */}
         <div className="p-4 border-b border-gray-200 space-y-3 bg-white">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-primary-600" />
-              Inbox ({conversations.length})
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary-600" />
+                Inbox ({conversations.length})
+              </h2>
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium transition-colors',
+                  isConnected
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                    : wsStatus === 'connecting' || wsStatus === 'reconnecting'
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200/60'
+                    : 'bg-gray-100 text-gray-500 border border-gray-200'
+                )}
+                title={`WebSocket: ${wsStatus}`}
+              >
+                <span
+                  className={cn(
+                    'w-1.5 h-1.5 rounded-full',
+                    isConnected
+                      ? 'bg-emerald-500 animate-pulse'
+                      : wsStatus === 'connecting' || wsStatus === 'reconnecting'
+                      ? 'bg-amber-500 animate-ping'
+                      : 'bg-gray-400'
+                  )}
+                />
+                {isConnected ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Offline'}
+              </span>
+            </div>
             <button
               onClick={loadConversations}
               className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
