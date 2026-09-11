@@ -37,8 +37,14 @@ import {
   RotateCcw,
   Wifi,
   WifiOff,
+  Paperclip,
+  Clock,
+  AlertTriangle,
+  FileCheck,
+  HelpCircle,
+  Eye,
 } from 'lucide-react';
-import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi } from '../api';
+import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type {
   Conversation,
@@ -49,6 +55,8 @@ import type {
   ReplySuggestion,
   ConversationSummary,
   IntentClassification,
+  WhatsAppTemplate,
+  TemplateComponent,
 } from '../types';
 import { useToast } from '../context/ToastContext';
 import { Badge } from '../components/common/Badge';
@@ -104,6 +112,26 @@ export const InboxPage: React.FC = () => {
 
   // Media preview modal / lightbox
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // WhatsApp 24-Hour Customer Care Session Window Countdown State
+  const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
+
+  // Media Attachment Upload Modal State
+  const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
+  const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
+  const [mediaCaption, setMediaCaption] = useState('');
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // WhatsApp Quick Template Modal State
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
+  const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
+  const [templateHeaderValue, setTemplateHeaderValue] = useState('');
+  const [isSendingTemplate, setIsSendingTemplate] = useState(false);
 
   // Modals
   const [isDealModalOpen, setIsDealModalOpen] = useState(false);
@@ -380,6 +408,207 @@ export const InboxPage: React.FC = () => {
 
     return () => clearInterval(pollInterval);
   }, [selectedConvId, filterStatus]);
+
+  // Helper to format countdown seconds into HH:MM:SS
+  const formatCountdown = (secs: number | null) => {
+    if (secs === null) return null;
+    if (secs <= 0) return '00:00:00';
+    const hours = Math.floor(secs / 3600);
+    const minutes = Math.floor((secs % 3600) / 60);
+    const seconds = secs % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  // Real-time calculation and tick of 24h WhatsApp session window
+  useEffect(() => {
+    if (!activeConversation) {
+      setSessionSecondsLeft(null);
+      return;
+    }
+
+    const channelType = activeConversation.channelType || (activeConversation as any).channel_type;
+    if (channelType !== 'whatsapp') {
+      setSessionSecondsLeft(null); // non-WhatsApp channels have no 24h limit
+      return;
+    }
+
+    const lastInbound = activeConversation.lastInboundAt || (activeConversation as any).last_inbound_at;
+    if (!lastInbound) {
+      setSessionSecondsLeft(0);
+      return;
+    }
+
+    const calculateRemaining = () => {
+      const inboundTime = new Date(lastInbound).getTime();
+      const expiresTime = inboundTime + 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      return Math.max(0, Math.floor((expiresTime - now) / 1000));
+    };
+
+    setSessionSecondsLeft(calculateRemaining());
+
+    const timer = setInterval(() => {
+      setSessionSecondsLeft(calculateRemaining());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [activeConversation]);
+
+  // Media attachment handlers
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check size limit (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      showToast('File size exceeds 50MB limit', 'error');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setSelectedMediaFile(file);
+    if (file.type.startsWith('image/')) {
+      setMediaPreviewUrl(URL.createObjectURL(file));
+    } else {
+      setMediaPreviewUrl(null);
+    }
+    setMediaCaption('');
+    setIsMediaModalOpen(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSendMedia = async () => {
+    if (!selectedConvId || !selectedMediaFile) return;
+
+    setIsUploadingMedia(true);
+    const formData = new FormData();
+    formData.append('file', selectedMediaFile);
+    if (mediaCaption.trim()) {
+      formData.append('caption', mediaCaption.trim());
+    }
+
+    try {
+      const sentMsg = await conversationsApi.sendMedia(selectedConvId, formData);
+      setMessages((prev) => [...prev, sentMsg]);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConvId
+            ? {
+                ...c,
+                lastMessageText: mediaCaption.trim() ? `[Media] ${mediaCaption.trim()}` : `[Media: ${selectedMediaFile.name}]`,
+                lastMessageAt: new Date().toISOString(),
+              }
+            : c
+        )
+      );
+      setTimeout(scrollToBottom, 50);
+      setIsMediaModalOpen(false);
+      setSelectedMediaFile(null);
+      setMediaPreviewUrl(null);
+      setMediaCaption('');
+      showToast('Media sent successfully', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to send media', 'error');
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  };
+
+  // WhatsApp Quick Template Selector & Dispatch Handlers
+  const openTemplateModal = async () => {
+    if (!activeConversation) return;
+    const channelId = activeConversation.channelId || (activeConversation as any).channel_id;
+    if (!channelId) {
+      showToast('No channel linked to this conversation', 'error');
+      return;
+    }
+
+    setIsTemplateModalOpen(true);
+    setIsLoadingTemplates(true);
+    setSelectedTemplate(null);
+    setTemplateParams({});
+    setTemplateHeaderValue('');
+
+    try {
+      const templates = await channelsApi.getTemplates(channelId);
+      const approved = templates.filter((t) => !t.status || t.status.toUpperCase() === 'APPROVED');
+      const listToShow = approved.length > 0 ? approved : templates;
+      setChannelTemplates(listToShow);
+      if (listToShow.length > 0) {
+        handleSelectTemplate(listToShow[0]);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to load templates for channel', 'error');
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
+
+  const handleSelectTemplate = (tpl: WhatsAppTemplate) => {
+    setSelectedTemplate(tpl);
+    const newParams: Record<string, string> = {};
+
+    tpl.components?.forEach((comp) => {
+      if (comp.type === 'BODY' && comp.text) {
+        const matches = comp.text.match(/\{\{([0-9]+)\}\}/g);
+        if (matches) {
+          matches.forEach((m) => {
+            const num = m.replace(/[\{\}]/g, '');
+            if (num === '1' && (activeConversation?.contactName || contact?.name)) {
+              newParams[num] = activeConversation?.contactName || contact?.name || '';
+            } else {
+              newParams[num] = '';
+            }
+          });
+        }
+      }
+    });
+
+    setTemplateParams(newParams);
+    setTemplateHeaderValue('');
+  };
+
+  const handleSendTemplate = async () => {
+    if (!selectedConvId || !selectedTemplate) return;
+
+    setIsSendingTemplate(true);
+
+    const headerComp = selectedTemplate.components?.find((c) => c.type === 'HEADER');
+    const headerType = headerComp?.format as any;
+
+    try {
+      const sentMsg = await conversationsApi.sendTemplate(selectedConvId, {
+        templateName: selectedTemplate.name,
+        templateLanguage: selectedTemplate.language || 'en',
+        templateParams,
+        headerType: headerType && ['TEXT', 'IMAGE', 'DOCUMENT', 'VIDEO'].includes(headerType) ? headerType : undefined,
+        headerValue: templateHeaderValue.trim() || undefined,
+      });
+
+      setMessages((prev) => [...prev, sentMsg]);
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedConvId
+            ? {
+                ...c,
+                lastMessageText: `[Template: ${selectedTemplate.name}]`,
+                lastMessageAt: new Date().toISOString(),
+              }
+            : c
+        )
+      );
+      setTimeout(scrollToBottom, 50);
+      setIsTemplateModalOpen(false);
+      setSelectedTemplate(null);
+      setTemplateParams({});
+      setTemplateHeaderValue('');
+      showToast(`Template "${selectedTemplate.name}" sent successfully`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to send template', 'error');
+    } finally {
+      setIsSendingTemplate(false);
+    }
+  };
 
   // Send message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -662,6 +891,60 @@ export const InboxPage: React.FC = () => {
                 </Button>
               </div>
             </div>
+
+            {/* WhatsApp 24-Hour Customer Care Session Window Banner */}
+            {activeConversation.channelType === 'whatsapp' && (
+              <div
+                className={cn(
+                  'px-6 py-2 border-b flex items-center justify-between text-xs transition-colors',
+                  sessionSecondsLeft === null || sessionSecondsLeft === undefined
+                    ? 'bg-gray-50 border-gray-200 text-gray-600'
+                    : sessionSecondsLeft > 3600
+                    ? 'bg-emerald-50/80 border-emerald-200/70 text-emerald-800'
+                    : sessionSecondsLeft > 0
+                    ? 'bg-amber-50/80 border-amber-200/70 text-amber-800'
+                    : 'bg-rose-50/80 border-rose-200/70 text-rose-800'
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  {sessionSecondsLeft === null || sessionSecondsLeft === undefined ? (
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                  ) : sessionSecondsLeft > 3600 ? (
+                    <Clock className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  ) : sessionSecondsLeft > 0 ? (
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                  )}
+
+                  <span>
+                    {sessionSecondsLeft === null || sessionSecondsLeft === undefined ? (
+                      'Meta WhatsApp Customer Care Window: Calculating...'
+                    ) : sessionSecondsLeft > 0 ? (
+                      <>
+                        <span className="font-semibold">WhatsApp 24h Window Active:</span> Freeform messages allowed (
+                        <span className="font-mono font-bold">{formatCountdown(sessionSecondsLeft)}</span> remaining)
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-semibold">WhatsApp 24h Window Expired:</span> Customer last messaged &gt;24h ago. Freeform messages are blocked by Meta. Send an approved template to re-engage.
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                {sessionSecondsLeft === 0 && (
+                  <button
+                    type="button"
+                    onClick={openTemplateModal}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold rounded-lg shadow-2xs transition-colors shrink-0"
+                  >
+                    <FileCheck className="w-3.5 h-3.5" />
+                    Send Approved Template
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Messages Feed */}
             <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-hide">
@@ -992,26 +1275,81 @@ export const InboxPage: React.FC = () => {
 
             {/* Message Composer Input */}
             <div className="p-4 bg-white border-t border-gray-200">
-              <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  placeholder={isSending ? "Sending message..." : "Type a reply..."}
-                  value={messageText}
-                  disabled={isSending}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  className="flex-1 px-4 py-2.5 text-xs rounded-xl bg-gray-100 border border-transparent focus:bg-white focus:border-primary-500 focus:outline-none disabled:opacity-60"
-                />
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="md"
-                  disabled={!messageText.trim() || isSending}
-                  isLoading={isSending}
-                  icon={<Send className="w-4 h-4" />}
-                >
-                  Send
-                </Button>
-              </form>
+              {/* Hidden File Input for Media Uploads */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                accept="image/*,video/*,audio/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip"
+              />
+
+              {activeConversation.channelType === 'whatsapp' && sessionSecondsLeft === 0 ? (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-rose-50/90 border border-rose-200 rounded-xl">
+                  <div className="flex items-center gap-2.5 text-rose-800 text-xs">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <div>
+                      <span className="font-semibold block">24-Hour Customer Care Window Expired</span>
+                      <span className="text-[11px] text-rose-700">
+                        Meta blocks freeform text & media after 24 hours of inactivity. Re-engage this customer by sending an approved WhatsApp Business template.
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    className="bg-rose-600 hover:bg-rose-700 text-white shrink-0 font-semibold"
+                    onClick={openTemplateModal}
+                    icon={<FileCheck className="w-4 h-4" />}
+                  >
+                    Send Template Message
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleSendMessage} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isSending}
+                    title="Attach Media (Image, PDF, Document, Video, Audio)"
+                    className="p-2.5 text-gray-500 hover:text-primary-600 hover:bg-gray-100 rounded-xl transition-colors shrink-0 disabled:opacity-50"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+
+                  {activeConversation.channelType === 'whatsapp' && (
+                    <button
+                      type="button"
+                      onClick={openTemplateModal}
+                      disabled={isSending}
+                      title="Send WhatsApp Business Template"
+                      className="p-2.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors shrink-0 disabled:opacity-50"
+                    >
+                      <FileCheck className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <input
+                    type="text"
+                    placeholder={isSending ? "Sending message..." : "Type a reply..."}
+                    value={messageText}
+                    disabled={isSending}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    className="flex-1 px-4 py-2.5 text-xs rounded-xl bg-gray-100 border border-transparent focus:bg-white focus:border-primary-500 focus:outline-none disabled:opacity-60"
+                  />
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="md"
+                    disabled={!messageText.trim() || isSending}
+                    isLoading={isSending}
+                    icon={<Send className="w-4 h-4" />}
+                  >
+                    Send
+                  </Button>
+                </form>
+              )}
             </div>
           </>
         ) : (
@@ -1554,6 +1892,246 @@ export const InboxPage: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Send Media Modal */}
+      <Modal
+        isOpen={isMediaModalOpen}
+        onClose={() => {
+          setIsMediaModalOpen(false);
+          setSelectedMediaFile(null);
+          setMediaPreviewUrl(null);
+          setMediaCaption('');
+        }}
+        title="Send Media Attachment"
+        description={`Attach and send a file to ${activeConversation?.contactName || 'contact'}`}
+      >
+        <div className="space-y-4">
+          {selectedMediaFile && (
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+              {mediaPreviewUrl ? (
+                <div className="relative rounded-lg overflow-hidden bg-black/5 max-h-60 flex items-center justify-center">
+                  <img src={mediaPreviewUrl} alt="Upload preview" className="max-h-60 max-w-full object-contain rounded-lg" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200">
+                  <FileText className="w-8 h-8 text-primary-600 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-900 truncate">{selectedMediaFile.name}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {(selectedMediaFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedMediaFile.type || 'Document'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Caption (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Add an optional caption to your media..."
+                  value={mediaCaption}
+                  onChange={(e) => setMediaCaption(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:border-primary-500"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              type="button"
+              disabled={isUploadingMedia}
+              onClick={() => {
+                setIsMediaModalOpen(false);
+                setSelectedMediaFile(null);
+                setMediaPreviewUrl(null);
+                setMediaCaption('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              disabled={!selectedMediaFile || isUploadingMedia}
+              isLoading={isUploadingMedia}
+              onClick={handleSendMedia}
+              icon={<Send className="w-4 h-4" />}
+            >
+              Send Attachment
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* WhatsApp Quick Template Modal */}
+      <Modal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        title="Send WhatsApp Template Message"
+        description="Re-engage customers or send structured notifications using pre-approved Meta HSM templates."
+      >
+        <div className="space-y-4">
+          {isLoadingTemplates ? (
+            <div className="p-8 text-center space-y-2">
+              <Spinner size="md" />
+              <p className="text-xs text-gray-500">Loading approved WhatsApp templates...</p>
+            </div>
+          ) : channelTemplates.length === 0 ? (
+            <div className="p-6 bg-amber-50 rounded-xl border border-amber-200 text-center space-y-2">
+              <AlertTriangle className="w-8 h-8 text-amber-600 mx-auto" />
+              <h4 className="text-xs font-bold text-amber-900">No Approved Templates Found</h4>
+              <p className="text-xs text-amber-700">
+                This WhatsApp channel doesn't have any approved templates yet. Sync templates in Channel Settings or create new templates in Meta Business Suite.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {/* Template Selector Dropdown */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Choose Template
+                </label>
+                <select
+                  value={selectedTemplate?.name || ''}
+                  onChange={(e) => {
+                    const tpl = channelTemplates.find((t) => t.name === e.target.value);
+                    if (tpl) handleSelectTemplate(tpl);
+                  }}
+                  className="w-full text-xs rounded-xl border border-gray-200 px-3.5 py-2.5 bg-white font-medium focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:outline-none"
+                >
+                  {channelTemplates.map((t) => (
+                    <option key={t.id || t.name} value={t.name}>
+                      {t.name} ({t.language}) {t.category ? `• ${t.category}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Dynamic Parameter Inputs */}
+              {selectedTemplate && (
+                <div className="space-y-3">
+                  {/* Header parameter if applicable */}
+                  {selectedTemplate.components?.some((c) => c.type === 'HEADER' && c.format === 'TEXT' && c.text?.includes('{{1}}')) && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Header Variable {'{{1}}'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Order #1234"
+                        value={templateHeaderValue}
+                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
+                        className="w-full text-xs rounded-lg border border-gray-200 px-3 py-2 bg-white focus:outline-none focus:border-primary-500"
+                      />
+                    </div>
+                  )}
+
+                  {Object.keys(templateParams).length > 0 && (
+                    <div className="space-y-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
+                      <span className="text-xs font-bold text-gray-800">
+                        Fill Template Variables:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {Object.keys(templateParams).map((paramKey) => (
+                          <div key={paramKey}>
+                            <label className="block text-[11px] font-medium text-gray-600 mb-0.5">
+                              Variable {'{{' + paramKey + '}}'}
+                            </label>
+                            <input
+                              type="text"
+                              placeholder={`Value for {{${paramKey}}}`}
+                              value={templateParams[paramKey] || ''}
+                              onChange={(e) =>
+                                setTemplateParams((prev) => ({ ...prev, [paramKey]: e.target.value }))
+                              }
+                              className="w-full text-xs rounded-lg border border-gray-200 px-2.5 py-1.5 bg-white focus:outline-none focus:border-primary-500"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live WhatsApp Bubble Preview */}
+                  <div>
+                    <span className="block text-xs font-semibold text-gray-700 mb-1">
+                      Live WhatsApp Chat Preview:
+                    </span>
+                    <div className="p-4 bg-[#EFEAE2] rounded-xl border border-[#D1D7DB] max-w-md mx-auto">
+                      <div className="bg-white rounded-lg p-3 shadow-xs space-y-2 text-xs text-gray-900 border border-gray-100">
+                        {/* Header Component */}
+                        {selectedTemplate.components?.find((c) => c.type === 'HEADER') && (
+                          <div className="font-bold text-gray-900 text-xs border-b border-gray-100 pb-1">
+                            {selectedTemplate.components
+                              .find((c) => c.type === 'HEADER')
+                              ?.text?.replace(/\{\{1\}\}/g, templateHeaderValue || '{{1}}') || '[Header Media]'}
+                          </div>
+                        )}
+
+                        {/* Body Component with live interpolation */}
+                        <div className="whitespace-pre-wrap leading-relaxed text-gray-800 text-xs">
+                          {(() => {
+                            const bodyComp = selectedTemplate.components?.find((c) => c.type === 'BODY');
+                            if (!bodyComp || !bodyComp.text) return 'Template message body';
+                            let renderedText = bodyComp.text;
+                            Object.entries(templateParams).forEach(([k, v]) => {
+                              renderedText = renderedText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || `{{${k}}}`);
+                            });
+                            return renderedText;
+                          })()}
+                        </div>
+
+                        {/* Footer Component */}
+                        {selectedTemplate.components?.find((c) => c.type === 'FOOTER') && (
+                          <div className="text-[10px] text-gray-500 pt-1">
+                            {selectedTemplate.components.find((c) => c.type === 'FOOTER')?.text}
+                          </div>
+                        )}
+
+                        {/* Buttons Component */}
+                        {selectedTemplate.components?.find((c) => c.type === 'BUTTONS') && (
+                          <div className="pt-2 border-t border-gray-100 space-y-1">
+                            {(selectedTemplate.components.find((c) => c.type === 'BUTTONS') as any)?.buttons?.map(
+                              (b: any, idx: number) => (
+                                <div
+                                  key={idx}
+                                  className="w-full text-center py-1.5 text-primary-600 font-semibold bg-gray-50 rounded border border-gray-200 text-[11px]"
+                                >
+                                  {b.text || 'Action Button'}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" type="button" onClick={() => setIsTemplateModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  type="button"
+                  disabled={!selectedTemplate || isSendingTemplate}
+                  isLoading={isSendingTemplate}
+                  onClick={handleSendTemplate}
+                  icon={<Send className="w-4 h-4" />}
+                >
+                  Send Template
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Add Deal Modal */}
       <Modal

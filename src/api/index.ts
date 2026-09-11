@@ -140,14 +140,34 @@ export const conversationsApi = {
   list: (status?: 'open' | 'closed') =>
     apiClient.get<Conversation[]>('/conversations', status ? { status } : undefined),
 
+  get: (conversationId: string) =>
+    apiClient.get<Conversation>(`/conversations/${conversationId}`),
+
   getMessages: (conversationId: string) =>
     apiClient.get<Message[]>(`/conversations/${conversationId}/messages`),
 
   sendMessage: (conversationId: string, text: string) =>
     apiClient.post<Message>(`/conversations/${conversationId}/messages`, { text }),
 
+  sendMedia: (conversationId: string, formData: FormData) =>
+    apiClient.post<Message>(`/conversations/${conversationId}/media`, formData),
+
+  sendTemplate: (
+    conversationId: string,
+    data: {
+      templateName: string;
+      templateLanguage?: string;
+      templateParams?: Record<string, string>;
+      headerType?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
+      headerValue?: string;
+    }
+  ) => apiClient.post<Message>(`/conversations/${conversationId}/template`, data),
+
   assignAgent: (conversationId: string, agentUserId: string) =>
     apiClient.post<void>(`/conversations/${conversationId}/assign`, { agentUserId }),
+
+  updateStatus: (conversationId: string, status: 'open' | 'pending' | 'closed') =>
+    apiClient.patch<void>(`/conversations/${conversationId}/status`, { status }),
 };
 
 // ==================== FLOWS API ====================

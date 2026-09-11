@@ -156,22 +156,46 @@ export interface ImportContactsResult {
 // Conversation
 export type ConversationStatus = 'open' | 'closed';
 
+export interface SessionWindow {
+  isOpen: boolean;
+  expiresAt: string | null;
+  secondsRemaining: number;
+  isExpired: boolean;
+  lastInboundAt: string | null;
+}
+
 export interface Conversation {
   id: string;
-  tenantId: string;
-  channelId: string;
-  channelType: ChannelType;
+  tenantId?: string;
+  tenant_id?: string;
+  channelId?: string;
+  channel_id?: string;
+  channelType?: ChannelType;
+  channel_type?: ChannelType;
   channelDisplayName?: string;
-  contactId: string;
+  channel_display_name?: string;
+  contactId?: string;
+  contact_id?: string;
   contactName?: string | null;
+  contact_name?: string | null;
   contactExternalId?: string;
+  contact_external_id?: string;
   assignedAgentUserId?: string | null;
+  assigned_agent_id?: string | null;
   status: ConversationStatus;
-  lastMessageAt: string;
+  lastMessageAt?: string | null;
+  last_message_at?: string | null;
+  lastInboundAt?: string | null;
+  last_inbound_at?: string | null;
+  sessionWindow?: SessionWindow;
+  session_window?: SessionWindow;
   lastMessageText?: string;
+  last_message_text?: string;
   flowId?: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  created_at?: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 // Message
