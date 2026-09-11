@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import type {
   AuthResponse,
+  User,
+  UserProfile,
+  UpdateProfileData,
   Channel,
   ChannelSettings,
   ChannelType,
@@ -60,6 +63,11 @@ export const authApi = {
 
   login: (data: { email: string; password: string }) =>
     apiClient.post<AuthResponse>('/auth/login', data),
+
+  getMe: () => apiClient.get<UserProfile>('/auth/me'),
+
+  updateProfile: (data: UpdateProfileData) =>
+    apiClient.patch<UserProfile>('/auth/profile', data),
 };
 
 // ==================== CHANNELS API ====================

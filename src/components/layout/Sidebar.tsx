@@ -22,7 +22,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { cn } from '../../lib/utils';
+import { cn, getUserInitials } from '../../lib/utils';
 import { Badge } from '../common/Badge';
 
 export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
@@ -127,11 +127,11 @@ export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ is
         <div className="p-3 border-t border-slate-800/80 space-y-2">
           <div className="p-2 rounded-xl bg-slate-800/40 flex items-center justify-between">
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-bold text-primary-300 uppercase">
-                {user?.email ? user.email.substring(0, 2) : 'US'}
+              <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-bold text-primary-300 uppercase shrink-0">
+                {getUserInitials(user?.name, user?.email)}
               </div>
               <div className="truncate">
-                <p className="text-xs font-medium text-slate-200 truncate">{user?.email}</p>
+                <p className="text-xs font-medium text-slate-200 truncate">{user?.name || user?.email}</p>
                 <p className="text-[10px] text-slate-400 flex items-center gap-1">
                   <ShieldCheck className="w-3 h-3 text-primary-400" />
                   {user?.role}

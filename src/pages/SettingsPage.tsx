@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Users,
   Key,
@@ -21,6 +22,11 @@ import {
   Clock,
   Sparkles,
   Info,
+  User as UserIcon,
+  Mail,
+  Building2,
+  ShieldCheck,
+  Edit3,
 } from 'lucide-react';
 import {
   teamApi,
@@ -46,12 +52,41 @@ import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { Tabs, Spinner } from '../components/common/Tabs';
+import { formatRelativeTime, getUserInitials } from '../lib/utils';
 
 export const SettingsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateProfile, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'team' | 'api-keys' | 'billing' | 'compliance'>('team');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabQuery = searchParams.get('tab') as 'profile' | 'team' | 'api-keys' | 'billing' | 'compliance' | null;
+  const validTabs = ['profile', 'team', 'api-keys', 'billing', 'compliance'];
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'team' | 'api-keys' | 'billing' | 'compliance'>(
+    tabQuery && validTabs.includes(tabQuery) ? tabQuery : 'profile'
+  );
+
+  useEffect(() => {
+    if (tabQuery && validTabs.includes(tabQuery) && tabQuery !== activeTab) {
+      setActiveTab(tabQuery);
+    }
+  }, [tabQuery]);
+
+  // ==================== PROFILE / ACCOUNT STATE ====================
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [copiedTenantId, setCopiedTenantId] = useState(false);
+  const [copiedUserId, setCopiedUserId] = useState(false);
+
+  useEffect(() => {
+    if (user?.name !== undefined) {
+      setProfileName(user.name || '');
+    }
+  }, [user?.name]);
 
   // ==================== TEAM STATE ====================
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -152,6 +187,63 @@ export const SettingsPage: React.FC = () => {
     if (activeTab === 'billing') loadBilling();
     if (activeTab === 'compliance') loadAuditLogs();
   }, [activeTab, loadTeam, loadApiKeys, loadBilling, loadAuditLogs]);
+
+  // ==================== PROFILE / ACCOUNT ACTIONS ====================
+  const handleUpdateName = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setIsSavingProfile(true);
+      await updateProfile({ name: profileName });
+      showToast('Profile name updated successfully', 'success');
+      await refreshProfile();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update profile name', 'error');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword) {
+      showToast('Please enter your current password', 'error');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      showToast('New password must be at least 6 characters long', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('New password and confirmation do not match', 'error');
+      return;
+    }
+
+    try {
+      setIsSavingPassword(true);
+      await updateProfile({ currentPassword, newPassword });
+      showToast('Password changed successfully', 'success');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to change password', 'error');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  const handleCopyId = (text: string, type: 'tenant' | 'user') => {
+    navigator.clipboard.writeText(text);
+    if (type === 'tenant') {
+      setCopiedTenantId(true);
+      setTimeout(() => setCopiedTenantId(false), 2000);
+      showToast('Tenant ID copied to clipboard', 'info');
+    } else {
+      setCopiedUserId(true);
+      setTimeout(() => setCopiedUserId(false), 2000);
+      showToast('User ID copied to clipboard', 'info');
+    }
+  };
 
   // ==================== TEAM ACTIONS ====================
   const handleInviteMember = async (e: React.FormEvent) => {
@@ -350,14 +442,263 @@ export const SettingsPage: React.FC = () => {
       {/* Tabs */}
       <Tabs
         tabs={[
+          { id: 'profile', label: 'My Profile & Account', icon: <UserIcon className="w-4 h-4" /> },
           { id: 'team', label: 'Team & RBAC', icon: <Users className="w-4 h-4" /> },
           { id: 'api-keys', label: 'Developer API Keys', icon: <Key className="w-4 h-4" /> },
           { id: 'billing', label: 'Usage & Plans', icon: <CreditCard className="w-4 h-4" /> },
           { id: 'compliance', label: 'Audit Trail & Compliance', icon: <Shield className="w-4 h-4" /> },
         ]}
         activeTab={activeTab}
-        onChange={(tabId) => setActiveTab(tabId as any)}
+        onChange={(tabId) => {
+          setActiveTab(tabId as any);
+          setSearchParams({ tab: tabId });
+        }}
       />
+
+      {/* ========================================================
+          TAB 0: MY PROFILE & ACCOUNT SETTINGS
+          ======================================================== */}
+      {activeTab === 'profile' && (
+        <div className="space-y-6">
+          {/* Identity & Workspace Overview Banner */}
+          <div className="p-6 bg-gradient-to-r from-gray-900 via-gray-850 to-gray-900 text-white rounded-2xl shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-center gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-primary-500 via-indigo-500 to-purple-500 flex items-center justify-center text-2xl font-bold text-white shadow-lg ring-4 ring-white/10 shrink-0">
+                  {getUserInitials(user?.name, user?.email)}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-bold text-white">
+                      {user?.name || 'Workspace User'}
+                    </h2>
+                    <Badge
+                      variant={
+                        user?.role === 'owner'
+                          ? 'purple'
+                          : user?.role === 'admin'
+                          ? 'primary'
+                          : 'success'
+                      }
+                      size="sm"
+                      className="uppercase text-[10px] font-bold tracking-wider py-0.5"
+                    >
+                      {user?.role || 'owner'}
+                    </Badge>
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Active Session
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-300 mt-1 flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-gray-400" />
+                    {user?.email}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-gray-400" />
+                    Last Active: {user?.lastLoginAt ? formatRelativeTime(user.lastLoginAt) : 'Currently active'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Workspace Badge & Tier Card */}
+              <div className="p-3.5 bg-white/5 border border-white/10 rounded-xl space-y-1.5 min-w-[200px]">
+                <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-primary-400" />
+                  <span>Workspace Organization</span>
+                </div>
+                <p className="text-sm font-bold text-white truncate">
+                  {user?.tenantName || 'Omni-Platform Workspace'}
+                </p>
+                <div className="flex items-center gap-2 pt-1 border-t border-white/10 text-[10px] text-gray-300">
+                  <CreditCard className="w-3 h-3 text-purple-400" />
+                  <span>Plan:</span>
+                  <span className="font-semibold text-purple-300 capitalize">{user?.tenantPlan || 'Starter Tier'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Profile & Security Management Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Form 1: Display Name */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <UserIcon className="w-4 h-4 text-primary-600" />
+                  Personal Information
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Update your public display name shown in conversations, flow activity, and team logs.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handleUpdateName} className="p-6 pt-0 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Account Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={user?.email || ''}
+                    disabled
+                    className="w-full px-3.5 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl text-gray-500 cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Your login email is managed by your workspace administrator.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Full Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Enter your full name"
+                    className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    type="submit"
+                    disabled={isSavingProfile || profileName === (user?.name || '')}
+                    className="flex items-center gap-2"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    {isSavingProfile ? 'Saving Changes...' : 'Save Profile Name'}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+
+            {/* Form 2: Change Password */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Lock className="w-4 h-4 text-primary-600" />
+                  Password & Security
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Change your account login password to maintain strong account protection.
+                </CardDescription>
+              </CardHeader>
+              <form onSubmit={handleChangePassword} className="p-6 pt-0 space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Current Password
+                  </label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Min. 6 characters"
+                      className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Confirm New Password
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repeat password"
+                      className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={isSavingPassword || !currentPassword || !newPassword}
+                    className="flex items-center gap-2"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {isSavingPassword ? 'Updating Password...' : 'Update Password'}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </div>
+
+          {/* Workspace UUID & Resource Pointers */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-primary-600" />
+                Workspace Identifiers & API Integration Metadata
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Use these unique identifier UUIDs when configuring webhooks, API requests, and third-party integrations.
+              </CardDescription>
+            </CardHeader>
+            <div className="p-6 pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-gray-50 border border-gray-200/80 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">
+                      Workspace Tenant ID
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-gray-800 mt-1 block">
+                      {user?.tenantId || 'Unavailable'}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyId(user?.tenantId || '', 'tenant')}
+                    className="flex items-center gap-1.5 shrink-0"
+                  >
+                    {copiedTenantId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedTenantId ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+
+                <div className="p-4 bg-gray-50 border border-gray-200/80 rounded-xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">
+                      Active User Member ID
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-gray-800 mt-1 block">
+                      {user?.id || 'Unavailable'}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyId(user?.id || '', 'user')}
+                    className="flex items-center gap-1.5 shrink-0"
+                  >
+                    {copiedUserId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedUserId ? 'Copied' : 'Copy'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* ========================================================
           TAB 1: TEAM & ACCESS CONTROL (RBAC)

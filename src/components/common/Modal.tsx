@@ -57,26 +57,26 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Dialog box */}
       <div
         className={cn(
-          'relative w-full bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all duration-200 animate-in fade-in zoom-in-95',
+          'relative w-full max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all duration-200 animate-in fade-in zoom-in-95',
           maxWidths[maxWidth]
         )}
       >
         {(title || description) && (
-          <div className="px-6 pt-6 pb-4 flex items-start justify-between border-b border-gray-100">
+          <div className="px-6 pt-6 pb-4 flex items-start justify-between border-b border-gray-100 shrink-0">
             <div>
               {title && <h3 className="text-lg font-semibold text-gray-900">{title}</h3>}
               {description && <p className="text-xs text-gray-500 mt-1">{description}</p>}
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="rounded-lg p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors shrink-0 ml-4"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         )}
 
-        <div className="p-6">{children}</div>
+        <div className="p-6 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

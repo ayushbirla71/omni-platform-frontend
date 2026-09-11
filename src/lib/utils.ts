@@ -40,3 +40,19 @@ export function formatRelativeTime(date: string | Date | null | undefined): stri
   if (diffDays < 7) return `${diffDays}d ago`;
   return formatDate(d);
 }
+
+export function getUserInitials(name?: string | null, email?: string | null): string {
+  if (name && name.trim()) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.trim().slice(0, 2).toUpperCase();
+  }
+  if (email && email.trim()) {
+    const localPart = email.split('@')[0] || '';
+    return localPart.slice(0, 2).toUpperCase() || 'US';
+  }
+  return 'US';
+}
+

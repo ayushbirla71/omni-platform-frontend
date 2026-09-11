@@ -3,14 +3,29 @@ export interface User {
   id: string;
   tenantId: string;
   email: string;
-  role: 'owner' | 'admin' | 'agent';
+  name?: string | null;
+  role: 'owner' | 'admin' | 'agent' | 'viewer';
+  status?: 'active' | 'deactivated' | 'invited';
+  lastLoginAt?: string | null;
   createdAt?: string;
+  tenantName?: string;
+  tenantPlan?: string;
+}
+
+export interface UserProfile extends User {}
+
+export interface UpdateProfileData {
+  name?: string;
+  currentPassword?: string;
+  newPassword?: string;
 }
 
 export interface AuthResponse {
   token: string;
   tenantId: string;
   userId: string;
+  role?: string;
+  email?: string;
 }
 
 // Channel

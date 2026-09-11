@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Menu,
   Search,
@@ -10,25 +10,36 @@ import {
   VolumeX,
   CheckCheck,
   Trash2,
-  X,
   Sparkles,
   MessageSquare,
   Users,
   Megaphone,
   CheckCircle2,
   AlertCircle,
-  ExternalLink,
   Wifi,
   WifiOff,
+  User as UserIcon,
+  Building2,
+  Key,
+  CreditCard,
+  ShieldCheck,
+  LogOut,
+  Copy,
+  Check,
+  Settings,
+  Mail,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { useNotification } from '../../context/NotificationContext';
 import { Badge } from '../common/Badge';
-import { formatRelativeTime, cn } from '../../lib/utils';
+import { formatRelativeTime, getUserInitials, cn } from '../../lib/utils';
 import type { AppNotification } from '../../types';
 
 export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { showToast } = useToast();
   const {
     notifications,
     unreadCount,
@@ -49,13 +60,19 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterTab, setFilterTab] = useState<'all' | 'unread'>('all');
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [copiedTenantId, setCopiedTenantId] = useState(false);
+
   const dropdownRef = useRef<HTMLDivElement>(null);
   const bellButtonRef = useRef<HTMLButtonElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
 
-  // Close dropdown on click outside or Escape key
+  // Close notifications and profile dropdown on click outside or Escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Notifications dropdown outside click
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node) &&
@@ -64,24 +81,33 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
       ) {
         setIsDropdownOpen(false);
       }
+
+      // Profile dropdown outside click
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target as Node) &&
+        profileButtonRef.current &&
+        !profileButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileOpen(false);
+      }
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setIsDropdownOpen(false);
+        setIsProfileOpen(false);
       }
     };
 
-    if (isDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleKeyDown);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isDropdownOpen, setIsDropdownOpen]);
+  }, [setIsDropdownOpen]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +122,13 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
     if (notification.link) {
       navigate(notification.link);
     }
+  };
+
+  const handleCopyTenantId = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedTenantId(true);
+    setTimeout(() => setCopiedTenantId(false), 2000);
+    showToast('Tenant ID copied to clipboard', 'info');
   };
 
   const filteredNotifications = notifications.filter((n) => {
@@ -231,15 +264,15 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
                     className={cn(
                       'p-1.5 rounded-lg text-xs transition-colors',
                       soundEnabled
-                        ? 'text-primary-600 hover:bg-primary-50'
-                        : 'text-gray-400 hover:bg-gray-100'
+                        ? 'text-primary-600 bg-primary-50 hover:bg-primary-100'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                     )}
-                    title={soundEnabled ? 'Mute alert sounds' : 'Enable alert sounds'}
+                    title={soundEnabled ? 'Alert sounds: ON' : 'Alert sounds: OFF'}
                   >
                     {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
                   </button>
 
-                  {/* Desktop Notification Toggle */}
+                  {/* Desktop Push Notification Permission */}
                   <button
                     onClick={() => {
                       if (permission !== 'granted') {
@@ -251,15 +284,15 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
                     className={cn(
                       'p-1.5 rounded-lg text-xs transition-colors',
                       desktopEnabled && permission === 'granted'
-                        ? 'text-primary-600 hover:bg-primary-50'
-                        : 'text-gray-400 hover:bg-gray-100'
+                        ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                        : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                     )}
                     title={
                       permission !== 'granted'
-                        ? 'Request desktop notification permission'
+                        ? 'Enable desktop notifications'
                         : desktopEnabled
-                        ? 'Disable desktop notifications'
-                        : 'Enable desktop notifications'
+                        ? 'Desktop notifications: ON'
+                        : 'Desktop notifications: OFF'
                     }
                   >
                     {desktopEnabled && permission === 'granted' ? (
@@ -273,30 +306,23 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
                   {unreadCount > 0 && (
                     <button
                       onClick={markAllAsRead}
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-primary-600 hover:bg-primary-50 transition-colors"
+                      className="p-1.5 rounded-lg text-xs text-gray-500 hover:text-primary-600 hover:bg-primary-50 transition-colors"
                       title="Mark all as read"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />
                     </button>
                   )}
-
-                  {/* Close */}
-                  <button
-                    onClick={() => setIsDropdownOpen(false)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors ml-1"
-                    title="Close"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               </div>
 
-              {/* Desktop Permission Enable Banner (shown if browser supports and not granted) */}
-              {permission !== 'granted' && typeof window !== 'undefined' && 'Notification' in window && (
-                <div className="bg-primary-50/70 border-b border-primary-100 p-2.5 flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2 text-primary-900">
-                    <BellRing className="w-4 h-4 text-primary-600 shrink-0" />
-                    <span className="text-[11px] leading-tight">Enable browser alerts for incoming messages</span>
+              {/* Permission Banner Prompt if not enabled */}
+              {permission === 'default' && (
+                <div className="p-2.5 bg-indigo-50/80 border-b border-indigo-100 flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <BellRing className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="text-[11px] text-indigo-900 font-medium">
+                      Enable desktop alerts for incoming messages
+                    </span>
                   </div>
                   <button
                     onClick={requestPermission}
@@ -424,19 +450,187 @@ export const Topbar: React.FC<{ onOpenSidebar: () => void }> = ({ onOpenSidebar 
 
         <div className="h-4 w-px bg-gray-200 hidden sm:block" />
 
-        {/* User Profile */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
-            {user?.email ? user.email.substring(0, 1).toUpperCase() : 'U'}
-          </div>
-          <div className="hidden sm:block text-left">
-            <p className="text-xs font-semibold text-gray-900 leading-tight truncate max-w-[120px]">
-              {user?.email}
-            </p>
-            <Badge variant="secondary" size="sm" className="mt-0.5">
-              {user?.role}
-            </Badge>
-          </div>
+        {/* User Profile Dropdown Trigger */}
+        <div className="relative">
+          <button
+            ref={profileButtonRef}
+            onClick={() => setIsProfileOpen(!isProfileOpen)}
+            className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+            title="View Profile & Workspace"
+          >
+            <div className="relative">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 via-indigo-600 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-sm ring-2 ring-white">
+                {getUserInitials(user?.name, user?.email)}
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
+            </div>
+            <div className="hidden sm:block text-left">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-gray-900 leading-tight truncate max-w-[130px]">
+                  {user?.name || user?.email?.split('@')[0]}
+                </p>
+                <ChevronDown className={cn("w-3 h-3 text-gray-400 transition-transform duration-200", isProfileOpen && "rotate-180")} />
+              </div>
+              <div className="flex items-center gap-1 mt-0.5">
+                <Badge
+                  variant={
+                    user?.role === 'owner'
+                      ? 'purple'
+                      : user?.role === 'admin'
+                      ? 'primary'
+                      : user?.role === 'agent'
+                      ? 'success'
+                      : 'secondary'
+                  }
+                  size="sm"
+                  className="text-[9px] uppercase tracking-wider font-bold py-0 px-1"
+                >
+                  {user?.role || 'viewer'}
+                </Badge>
+                {user?.tenantPlan && (
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    • {user.tenantPlan}
+                  </span>
+                )}
+              </div>
+            </div>
+          </button>
+
+          {/* Profile Dropdown Menu */}
+          {isProfileOpen && (
+            <div
+              ref={profileDropdownRef}
+              className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
+            >
+              {/* Header with Avatar & Identity */}
+              <div className="p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white relative">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary-500 via-indigo-500 to-purple-500 flex items-center justify-center text-base font-bold text-white shadow-md ring-2 ring-white/20">
+                      {getUserInitials(user?.name, user?.email)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-white truncate">
+                        {user?.name || 'Workspace User'}
+                      </p>
+                      <p className="text-xs text-gray-300 truncate flex items-center gap-1">
+                        <Mail className="w-3 h-3 text-gray-400 shrink-0" />
+                        {user?.email}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-white border border-white/10">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    Role: {user?.role ? user.role.toUpperCase() : 'OWNER'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    {user?.status || 'Active'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Workspace / Tenant Info Card */}
+              <div className="p-3 bg-gray-50/80 border-b border-gray-100 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 flex items-center gap-1.5 font-medium">
+                    <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                    Workspace
+                  </span>
+                  <span className="font-semibold text-gray-900 truncate max-w-[140px]">
+                    {user?.tenantName || 'Omni-Platform Workspace'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500 flex items-center gap-1.5 font-medium">
+                    <CreditCard className="w-3.5 h-3.5 text-gray-400" />
+                    Plan Tier
+                  </span>
+                  <Badge variant="purple" size="sm" className="capitalize text-[10px]">
+                    {user?.tenantPlan || 'Starter Tier'}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-gray-200/60">
+                  <span className="text-[11px] text-gray-400 font-mono">Tenant ID</span>
+                  <button
+                    onClick={() => handleCopyTenantId(user?.tenantId || '')}
+                    className="flex items-center gap-1 text-[11px] font-mono text-gray-600 hover:text-primary-600 bg-white px-1.5 py-0.5 rounded border border-gray-200 hover:border-primary-300 transition-colors"
+                    title="Click to copy Tenant ID"
+                  >
+                    {copiedTenantId ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        <span className="text-emerald-600">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="truncate max-w-[90px]">{user?.tenantId?.slice(0, 8)}...</span>
+                        <Copy className="w-3 h-3 text-gray-400" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action items: Redirects directly to Settings tabs */}
+              <div className="p-2 space-y-1">
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    navigate('/settings?tab=profile');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50/60 rounded-xl transition-colors text-left"
+                >
+                  <UserIcon className="w-4 h-4 text-gray-400" />
+                  <span>Profile & Account Details</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    navigate('/settings?tab=team');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50/60 rounded-xl transition-colors text-left"
+                >
+                  <Settings className="w-4 h-4 text-gray-400" />
+                  <span>Workspace Settings & RBAC</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    navigate('/settings?tab=api-keys');
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-gray-700 hover:text-primary-600 hover:bg-primary-50/60 rounded-xl transition-colors text-left"
+                >
+                  <Key className="w-4 h-4 text-gray-400" />
+                  <span>Developer API Keys</span>
+                </button>
+              </div>
+
+              {/* Logout Footer */}
+              <div className="p-2 border-t border-gray-100 bg-gray-50/50">
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    logout();
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <LogOut className="w-4 h-4" />
+                    <span>Sign Out</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400">End session</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>
