@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { SignupPage } from './pages/SignupPage';
@@ -70,7 +71,8 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <Routes>
+          <NotificationProvider>
+            <Routes>
             {/* Public Routes */}
             <Route
               path="/login"
@@ -128,9 +130,10 @@ function App() {
             {/* Catch-all redirect */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </ToastProvider>
-      </AuthProvider>
-    </BrowserRouter>
+        </NotificationProvider>
+      </ToastProvider>
+    </AuthProvider>
+  </BrowserRouter>
   );
 }
 

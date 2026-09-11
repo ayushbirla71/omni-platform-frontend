@@ -350,8 +350,11 @@ export const InboxPage: React.FC = () => {
             lastMessageAt: msg.createdAt || (msg as any).created_at || new Date().toISOString(),
           };
           return [updated, ...prev.filter((c) => c.id !== convId)];
+        } else {
+          // New conversation arrived from a customer — reload conversation list
+          loadConversations();
+          return prev;
         }
-        return prev;
       });
     });
 

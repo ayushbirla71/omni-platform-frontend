@@ -1079,4 +1079,19 @@ export interface RealtimeMessageEvent<T = any> {
   timestamp: string;
 }
 
+export type NotificationType = 'message' | 'conversation' | 'campaign' | 'system' | 'deal' | 'channel';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  link?: string;
+  channelType?: string;
+  meta?: Record<string, any>;
+}
+
+
 
