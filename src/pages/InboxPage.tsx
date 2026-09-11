@@ -338,16 +338,30 @@ export const InboxPage: React.FC = () => {
           return [...prev, msg];
         });
         setTimeout(scrollToBottom, 50);
+
+        if (msg.direction === 'inbound') {
+          const inTime = msg.sentAt || msg.createdAt || (msg as any).sent_at || (msg as any).created_at || new Date().toISOString();
+          setActiveConversation((prev) => (prev ? {
+            ...prev,
+            lastInboundAt: inTime,
+            last_inbound_at: inTime,
+          } : null));
+        }
       }
 
       // Update conversations list preview
       setConversations((prev) => {
         const found = prev.find((c) => c.id === convId);
         if (found) {
+          const msgTime = msg.sentAt || msg.createdAt || (msg as any).sent_at || (msg as any).created_at || new Date().toISOString();
           const updated = {
             ...found,
             lastMessageText: msg.text || (msg as any).last_message_text || 'New message',
-            lastMessageAt: msg.createdAt || (msg as any).created_at || new Date().toISOString(),
+            lastMessageAt: msgTime,
+            ...(msg.direction === 'inbound' ? {
+              lastInboundAt: msgTime,
+              last_inbound_at: msgTime,
+            } : {}),
           };
           return [updated, ...prev.filter((c) => c.id !== convId)];
         } else {
@@ -435,15 +449,42 @@ export const InboxPage: React.FC = () => {
       return;
     }
 
-    const lastInbound = activeConversation.lastInboundAt || (activeConversation as any).last_inbound_at;
-    if (!lastInbound) {
-      setSessionSecondsLeft(0);
-      return;
-    }
-
     const calculateRemaining = () => {
-      const inboundTime = new Date(lastInbound).getTime();
-      const expiresTime = inboundTime + 24 * 60 * 60 * 1000;
+      let lastInboundTimeMs: number | null = null;
+
+      const convInbound = activeConversation.lastInboundAt || (activeConversation as any).last_inbound_at;
+      if (convInbound) {
+        const t = new Date(convInbound).getTime();
+        if (!isNaN(t) && t > 0) {
+          lastInboundTimeMs = t;
+        }
+      }
+
+      // Check messages array to ensure latest inbound customer message is reflected
+      const latestInboundMsg = [...messages].reverse().find(
+        (m) => m.direction === 'inbound' || (m as any).senderType === 'customer'
+      );
+      if (latestInboundMsg) {
+        const msgTime =
+          latestInboundMsg.sentAt ||
+          latestInboundMsg.createdAt ||
+          (latestInboundMsg as any).sent_at ||
+          (latestInboundMsg as any).created_at;
+        if (msgTime) {
+          const mt = new Date(msgTime).getTime();
+          if (!isNaN(mt) && mt > 0) {
+            if (lastInboundTimeMs === null || mt > lastInboundTimeMs) {
+              lastInboundTimeMs = mt;
+            }
+          }
+        }
+      }
+
+      if (lastInboundTimeMs === null) {
+        return 0;
+      }
+
+      const expiresTime = lastInboundTimeMs + 24 * 60 * 60 * 1000;
       const now = Date.now();
       return Math.max(0, Math.floor((expiresTime - now) / 1000));
     };
@@ -455,7 +496,7 @@ export const InboxPage: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [activeConversation]);
+  }, [activeConversation, messages]);
 
   // Media attachment handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -894,60 +935,6 @@ export const InboxPage: React.FC = () => {
                 </Button>
               </div>
             </div>
-
-            {/* WhatsApp 24-Hour Customer Care Session Window Banner */}
-            {activeConversation.channelType === 'whatsapp' && (
-              <div
-                className={cn(
-                  'px-6 py-2 border-b flex items-center justify-between text-xs transition-colors',
-                  sessionSecondsLeft === null || sessionSecondsLeft === undefined
-                    ? 'bg-gray-50 border-gray-200 text-gray-600'
-                    : sessionSecondsLeft > 3600
-                    ? 'bg-emerald-50/80 border-emerald-200/70 text-emerald-800'
-                    : sessionSecondsLeft > 0
-                    ? 'bg-amber-50/80 border-amber-200/70 text-amber-800'
-                    : 'bg-rose-50/80 border-rose-200/70 text-rose-800'
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  {sessionSecondsLeft === null || sessionSecondsLeft === undefined ? (
-                    <Clock className="w-3.5 h-3.5 text-gray-400" />
-                  ) : sessionSecondsLeft > 3600 ? (
-                    <Clock className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                  ) : sessionSecondsLeft > 0 ? (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                  ) : (
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                  )}
-
-                  <span>
-                    {sessionSecondsLeft === null || sessionSecondsLeft === undefined ? (
-                      'Meta WhatsApp Customer Care Window: Calculating...'
-                    ) : sessionSecondsLeft > 0 ? (
-                      <>
-                        <span className="font-semibold">WhatsApp 24h Window Active:</span> Freeform messages allowed (
-                        <span className="font-mono font-bold">{formatCountdown(sessionSecondsLeft)}</span> remaining)
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-semibold">WhatsApp 24h Window Expired:</span> Customer last messaged &gt;24h ago. Freeform messages are blocked by Meta. Send an approved template to re-engage.
-                      </>
-                    )}
-                  </span>
-                </div>
-
-                {sessionSecondsLeft === 0 && (
-                  <button
-                    type="button"
-                    onClick={openTemplateModal}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold rounded-lg shadow-2xs transition-colors shrink-0"
-                  >
-                    <FileCheck className="w-3.5 h-3.5" />
-                    Send Approved Template
-                  </button>
-                )}
-              </div>
-            )}
 
             {/* Messages Feed */}
             <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-hide">
