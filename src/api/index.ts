@@ -16,6 +16,8 @@ import type {
   Deal,
   PipelineSummary,
   Campaign,
+  CampaignRecipient,
+  CampaignAnalytics,
   SearchResults,
   DeepLinkResponse,
   SystemStatus,
@@ -210,6 +212,13 @@ export const campaignsApi = {
   list: () => apiClient.get<Campaign[]>('/campaigns'),
 
   get: (id: string) => apiClient.get<Campaign>(`/campaigns/${id}`),
+
+  getAnalytics: (id: string) => apiClient.get<CampaignAnalytics>(`/campaigns/${id}/analytics`),
+
+  getRecipients: (
+    id: string,
+    params?: { status?: string; search?: string; limit?: number; offset?: number }
+  ) => apiClient.get<{ recipients: CampaignRecipient[]; total: number }>(`/campaigns/${id}/recipients`, params),
 
   create: (data: {
     channelId: string;

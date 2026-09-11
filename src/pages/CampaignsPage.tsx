@@ -15,6 +15,8 @@ import {
   Layers,
   Trash2,
   Tag as TagIcon,
+  BarChart3,
+  Eye,
 } from 'lucide-react';
 import { campaignsApi } from '../api';
 import type { Campaign } from '../types';
@@ -236,7 +238,12 @@ export const CampaignsPage: React.FC = () => {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="text-sm font-bold text-gray-900">{campaign.name}</h3>
+                        <Link
+                          to={`/campaigns/${campaign.id}`}
+                          className="text-sm font-bold text-gray-900 hover:text-primary-600 transition-colors"
+                        >
+                          {campaign.name}
+                        </Link>
                         <Badge
                           variant={
                             campaign.status === 'completed'
@@ -307,6 +314,15 @@ export const CampaignsPage: React.FC = () => {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 ml-4">
+                    <Link to={`/campaigns/${campaign.id}`}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        icon={<BarChart3 className="w-3.5 h-3.5 text-primary-600" />}
+                      >
+                        Analytics
+                      </Button>
+                    </Link>
                     {campaign.status === 'draft' && (
                       <Button
                         variant="primary"

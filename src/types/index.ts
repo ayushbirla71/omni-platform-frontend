@@ -479,6 +479,9 @@ export interface Campaign {
   tenantId?: string;
   channel_id?: string;
   channelId?: string;
+  channel_type?: string;
+  channelType?: string;
+  channel_display_name?: string;
   channelDisplayName?: string;
   name: string;
   type: CampaignType;
@@ -488,8 +491,16 @@ export interface Campaign {
   totalRecipients?: number;
   sent_count?: number;
   sentCount?: number;
+  completed_count?: number;
+  completedCount?: number;
   failed_count?: number;
   failedCount?: number;
+  pending_count?: number;
+  pendingCount?: number;
+  flow_name?: string;
+  flowName?: string;
+  flow_status?: string;
+  flowStatus?: string;
   targetContactIds?: string[];
   tags?: string[];
   flowId?: string;
@@ -499,6 +510,54 @@ export interface Campaign {
   createdAt?: string;
   updated_at?: string;
   updatedAt?: string;
+}
+
+export type CampaignRecipientStatus = 'pending' | 'sent' | 'failed' | 'completed';
+
+export interface CampaignRecipient {
+  id: string;
+  campaign_id: string;
+  campaignId?: string;
+  contact_id: string;
+  contactId?: string;
+  status: CampaignRecipientStatus;
+  current_step: number;
+  currentStep?: number;
+  next_send_at: string;
+  nextSendAt?: string;
+  last_error: string | null;
+  lastError?: string | null;
+  updated_at: string;
+  updatedAt?: string;
+  contact_name?: string | null;
+  contactName?: string | null;
+  contact_external_id?: string;
+  contactExternalId?: string;
+  contact_email?: string | null;
+  contactEmail?: string | null;
+  contact_attributes?: Record<string, any>;
+  contactAttributes?: Record<string, any>;
+  conversation_id?: string | null;
+  conversationId?: string | null;
+}
+
+export interface CampaignMetrics {
+  totalRecipients: number;
+  sentCount: number;
+  completedCount: number;
+  deliveredTotal: number;
+  failedCount: number;
+  pendingCount: number;
+  deliveryRate: number;
+  failureRate: number;
+  pendingRate: number;
+}
+
+export interface CampaignAnalytics {
+  campaign: Campaign;
+  metrics: CampaignMetrics;
+  statusBreakdown: Array<{ status: string; count: number }>;
+  stepBreakdown: Array<{ step: number; count: number }>;
 }
 
 // Search

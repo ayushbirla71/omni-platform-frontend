@@ -12,6 +12,7 @@ import { FlowsPage } from './pages/FlowsPage';
 import { FlowEditorPage } from './pages/FlowEditorPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { CampaignsPage } from './pages/CampaignsPage';
+import { CampaignDetailsPage } from './pages/CampaignDetailsPage';
 import { NewCampaignPage } from './pages/NewCampaignPage';
 import { DealsPage } from './pages/DealsPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -113,6 +114,7 @@ function App() {
               <Route path="contacts" element={<ContactsPage />} />
               <Route path="campaigns" element={<CampaignsPage />} />
               <Route path="campaigns/new" element={<NewCampaignPage />} />
+              <Route path="campaigns/:id" element={<CampaignDetailsPage />} />
               <Route path="deals" element={<DealsPage />} />
               <Route path="products" element={<ProductsPage />} />
               <Route path="orders" element={<OrdersPage />} />
