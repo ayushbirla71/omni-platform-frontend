@@ -63,6 +63,7 @@ import { Badge } from '../components/common/Badge';
 import { FlowCanvasNode, FlowNodeData } from '../components/flow/FlowCanvasNode';
 import { FlowCustomEdge } from '../components/flow/FlowCustomEdge';
 import { FlowToolbar } from '../components/flow/FlowToolbar';
+import { FlowNodeHelpModal } from '../components/flow/FlowNodeHelpModal';
 
 // Node and Edge types registered with React Flow
 const nodeTypes = {
@@ -110,6 +111,9 @@ const FlowEditorCanvas: React.FC = () => {
 
   // Node Editor Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingFlow, setIsDeletingFlow] = useState(false);
   const [isNewNode, setIsNewNode] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState('');
   const [nodeType, setNodeType] = useState<FlowNodeType>('message');
@@ -993,6 +997,21 @@ const FlowEditorCanvas: React.FC = () => {
     }
   };
 
+  // Delete Flow
+  const handleDeleteFlow = async () => {
+    if (!id || !flow) return;
+    setIsDeletingFlow(true);
+    try {
+      await flowsApi.delete(id);
+      showToast(`Flow "${flow.name}" deleted successfully`, 'success');
+      navigate('/flows');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete flow', 'error');
+    } finally {
+      setIsDeletingFlow(false);
+    }
+  };
+
   const isValid = nodes.length > 0 && Boolean(entryNodeId);
 
   // Helper for live preview body interpolation
@@ -1040,6 +1059,7 @@ const FlowEditorCanvas: React.FC = () => {
           onRedo={handleRedo}
           onSaveDraft={handleSaveDraft}
           onPublish={handlePublish}
+          onDeleteFlow={() => setIsDeleteModalOpen(true)}
           isSaving={isSaving}
           isPublishing={isPublishing}
           isValid={isValid}
@@ -1047,6 +1067,7 @@ const FlowEditorCanvas: React.FC = () => {
           onZoomOut={() => reactFlowInstance.zoomOut()}
           onFitView={() => reactFlowInstance.fitView({ padding: 0.2 })}
           onAddNode={handleAddNewNode}
+          onOpenHelp={() => setIsHelpModalOpen(true)}
         />
       </div>
 
@@ -2008,6 +2029,55 @@ const FlowEditorCanvas: React.FC = () => {
             </div>
           </div>
         </form>
+      </Modal>
+
+      {/* ================= Flow Node Working System Guide Modal ================= */}
+      <FlowNodeHelpModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
+      />
+
+      {/* ================= Delete Flow Confirmation Modal ================= */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !isDeletingFlow && setIsDeleteModalOpen(false)}
+        title="Delete Automation Flow"
+        description="Are you sure you want to delete this flow? This action will remove the flow and cleanly disconnect related services."
+        maxWidth="md"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-900 space-y-1">
+              <p className="font-semibold">
+                You are about to delete <span className="underline font-bold">"{flow?.name}"</span>.
+              </p>
+              <p className="text-amber-700 leading-relaxed">
+                Channels configured with this flow will be safely unlinked, and any active executions will be marked completed. Historical logs and past analytics will remain intact.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+            <Button
+              variant="outline"
+              type="button"
+              disabled={isDeletingFlow}
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              isLoading={isDeletingFlow}
+              onClick={handleDeleteFlow}
+              icon={<Trash2 className="w-4 h-4" />}
+            >
+              Delete Flow
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

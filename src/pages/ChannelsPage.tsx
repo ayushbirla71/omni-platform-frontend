@@ -11,6 +11,7 @@ import {
   Copy,
   Download,
   AlertCircle,
+  AlertTriangle,
   HelpCircle,
   RefreshCw,
   Zap,
@@ -19,10 +20,19 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Settings,
+  Trash2,
+  Phone,
+  Bot,
+  Key,
+  Clock,
+  XCircle,
+  Info,
 } from 'lucide-react';
 import { channelsApi, whatsappOnboardingApi, flowsApi } from '../api';
 import type {
   Channel,
+  ChannelSettings,
   WhatsAppOnboardingConfig,
   OnboardingCapacity,
   WhatsAppTemplate,
@@ -59,9 +69,17 @@ export const ChannelsPage: React.FC = () => {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false);
 
-  // Active channel for QR / Templates
+  // Active channel for QR / Templates / Settings / Disconnect
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
+  const [channelSettings, setChannelSettings] = useState<ChannelSettings | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+  const [isSyncingSettings, setIsSyncingSettings] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [channelToDisconnect, setChannelToDisconnect] = useState<Channel | null>(null);
+
   const [deepLinkData, setDeepLinkData] = useState<DeepLinkResponse | null>(null);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -323,11 +341,103 @@ export const ChannelsPage: React.FC = () => {
     try {
       await channelsApi.setDefaultFlow(channelId, flowId ? flowId : null);
       setChannels((prev) =>
-        prev.map((c) => (c.id === channelId ? { ...c, defaultFlowId: flowId || null } : c))
+        prev.map((c) =>
+          c.id === channelId
+            ? { ...c, defaultFlowId: flowId || null, default_flow_id: flowId || null }
+            : c
+        )
       );
       showToast('Default automation flow updated', 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to set flow', 'error');
+    }
+  };
+
+  // Open Settings modal
+  const handleOpenSettingsModal = async (channel: Channel) => {
+    setActiveChannel(channel);
+    setChannelSettings(null);
+    setIsSettingsModalOpen(true);
+    setIsLoadingSettings(true);
+    try {
+      const settings = await channelsApi.getSettings(channel.id);
+      setChannelSettings(settings);
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to load channel settings');
+      showToast(errMsg, 'error');
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  // Live Sync metadata from Meta / Telegram
+  const handleSyncChannelMetadata = async () => {
+    if (!activeChannel) return;
+    setIsSyncingSettings(true);
+    try {
+      const updatedSettings = await channelsApi.sync(activeChannel.id);
+      setChannelSettings(updatedSettings);
+
+      // Update channels list in state
+      setChannels((prev) =>
+        prev.map((c) => {
+          if (c.id !== activeChannel.id) return c;
+          const meta = updatedSettings.metadata;
+          return {
+            ...c,
+            verifiedName: meta.verifiedName,
+            verified_name: meta.verifiedName,
+            displayPhoneNumber: meta.displayPhoneNumber || meta.businessPhoneNumber,
+            display_phone_number: meta.displayPhoneNumber || meta.businessPhoneNumber,
+            qualityRating: meta.qualityRating,
+            quality_rating: meta.qualityRating,
+            nameStatus: meta.nameStatus,
+            name_status: meta.nameStatus,
+            codeVerificationStatus: meta.codeVerificationStatus,
+            code_verification_status: meta.codeVerificationStatus,
+            botUsername: meta.botUsername,
+            bot_username: meta.botUsername,
+            botFirstName: meta.botFirstName,
+            bot_first_name: meta.botFirstName,
+          };
+        })
+      );
+
+      const providerLabel = activeChannel.type === 'whatsapp' ? 'Meta WhatsApp Cloud API' : 'Telegram Bot API';
+      showToast(`Channel live status synced with ${providerLabel}!`, 'success');
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to sync channel metadata');
+      showToast(errMsg, 'error');
+    } finally {
+      setIsSyncingSettings(false);
+    }
+  };
+
+  // Open Disconnect Modal
+  const handleOpenDisconnectModal = (channel: Channel) => {
+    setChannelToDisconnect(channel);
+    setIsDisconnectModalOpen(true);
+  };
+
+  // Confirm Disconnect
+  const handleConfirmDisconnect = async () => {
+    if (!channelToDisconnect) return;
+    setIsDisconnecting(true);
+    try {
+      await channelsApi.delete(channelToDisconnect.id);
+      setChannels((prev) => prev.filter((c) => c.id !== channelToDisconnect.id));
+      const name = channelToDisconnect.displayName || channelToDisconnect.display_name || 'Channel';
+      showToast(`Disconnected "${name}" successfully`, 'success');
+      setIsDisconnectModalOpen(false);
+      if (isSettingsModalOpen && activeChannel?.id === channelToDisconnect.id) {
+        setIsSettingsModalOpen(false);
+      }
+      setChannelToDisconnect(null);
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to disconnect channel');
+      showToast(errMsg, 'error');
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -549,7 +659,7 @@ export const ChannelsPage: React.FC = () => {
                       {channel.type === 'whatsapp' ? 'W' : 'T'}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-gray-900">{channel.displayName}</h3>
+                      <h3 className="text-sm font-bold text-gray-900">{channel.displayName || channel.display_name}</h3>
                       <p className="text-xs text-gray-500 capitalize">{channel.type}</p>
                     </div>
                   </div>
@@ -559,6 +669,85 @@ export const ChannelsPage: React.FC = () => {
                   </Badge>
                 </div>
 
+                {/* Provider Metadata Preview */}
+                {channel.type === 'whatsapp' && (
+                  <div className="pt-2 border-t border-gray-100 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-500 font-medium flex items-center gap-1">
+                        <Phone className="w-3 h-3 text-emerald-600" />
+                        {channel.displayPhoneNumber || channel.display_phone_number || 'Phone number'}
+                      </span>
+                      {channel.verifiedName || channel.verified_name ? (
+                        <span className="font-semibold text-gray-800 text-[11px] truncate max-w-[140px]" title={channel.verifiedName || channel.verified_name || ''}>
+                          {channel.verifiedName || channel.verified_name}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {/* Name Status Badge */}
+                      {(channel.nameStatus || channel.name_status) && (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                            (channel.nameStatus || channel.name_status) === 'APPROVED' ||
+                            (channel.nameStatus || channel.name_status) === 'AVAILABLE_WITHOUT_REVIEW'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : (channel.nameStatus || channel.name_status) === 'PENDING_REVIEW'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          {(channel.nameStatus || channel.name_status) === 'APPROVED' ||
+                          (channel.nameStatus || channel.name_status) === 'AVAILABLE_WITHOUT_REVIEW' ? (
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                          ) : (channel.nameStatus || channel.name_status) === 'PENDING_REVIEW' ? (
+                            <Clock className="w-2.5 h-2.5" />
+                          ) : (
+                            <XCircle className="w-2.5 h-2.5" />
+                          )}
+                          Name: {channel.nameStatus || channel.name_status}
+                        </span>
+                      )}
+
+                      {/* Quality Rating */}
+                      {(channel.qualityRating || channel.quality_rating) && (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold ${
+                            (channel.qualityRating || channel.quality_rating) === 'GREEN'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : (channel.qualityRating || channel.quality_rating) === 'YELLOW'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              (channel.qualityRating || channel.quality_rating) === 'GREEN'
+                                ? 'bg-emerald-500'
+                                : (channel.qualityRating || channel.quality_rating) === 'YELLOW'
+                                ? 'bg-amber-500'
+                                : 'bg-rose-500'
+                            }`}
+                          />
+                          Quality: {channel.qualityRating || channel.quality_rating}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {channel.type === 'telegram' && (channel.botUsername || channel.bot_username) && (
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span className="text-gray-500 font-medium flex items-center gap-1">
+                      <Bot className="w-3 h-3 text-blue-600" />
+                      @{channel.botUsername || channel.bot_username}
+                    </span>
+                    {channel.botFirstName || channel.bot_first_name ? (
+                      <span className="text-[11px] text-gray-600">{channel.botFirstName || channel.bot_first_name}</span>
+                    ) : null}
+                  </div>
+                )}
+
                 {/* Default Flow Assignment */}
                 <div className="pt-2 border-t border-gray-100 space-y-1.5">
                   <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
@@ -566,22 +755,34 @@ export const ChannelsPage: React.FC = () => {
                     Default Flow
                   </label>
                   <select
-                    value={channel.defaultFlowId || ''}
+                    value={channel.defaultFlowId || channel.default_flow_id || ''}
                     onChange={(e) => handleSetDefaultFlow(channel.id, e.target.value)}
                     className="w-full text-xs rounded-xl border border-gray-200 py-1.5 px-2.5 bg-gray-50/50 hover:bg-white focus:bg-white focus:border-primary-500 transition-colors"
                   >
                     <option value="">None (Human inbox only)</option>
-                    {flows.map((flow) => (
-                      <option key={flow.id} value={flow.id}>
-                        {flow.name} (v{flow.version})
-                      </option>
-                    ))}
+                    {flows
+                      .filter((flow) => flow.status === 'published')
+                      .map((flow) => (
+                        <option key={flow.id} value={flow.id}>
+                          {flow.name} (v{flow.version})
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenSettingsModal(channel)}
+                  icon={<Settings className="w-3.5 h-3.5 text-gray-600" />}
+                  title="Channel Settings & Status"
+                >
+                  Settings
+                </Button>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -603,6 +804,16 @@ export const ChannelsPage: React.FC = () => {
                     Templates
                   </Button>
                 )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenDisconnectModal(channel)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-gray-200 hover:border-red-200"
+                  title="Disconnect Channel"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </Card>
           ))
@@ -1047,6 +1258,391 @@ export const ChannelsPage: React.FC = () => {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* ==================== MODAL: Channel Settings & Provider Status ==================== */}
+      <Modal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        title={`${activeChannel?.displayName || activeChannel?.display_name || 'Channel'} - Channel Settings & Status`}
+        description="Upstream provider verification status, identifiers, and configuration"
+        maxWidth="2xl"
+      >
+        <div className="space-y-6">
+          {isLoadingSettings ? (
+            <div className="py-12">
+              <Spinner size="lg" />
+            </div>
+          ) : channelSettings ? (
+            <>
+              {/* Top Sync & Status Bar */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-gray-50 to-slate-100 border border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-sm ${
+                      channelSettings.type === 'whatsapp'
+                        ? 'bg-gradient-to-tr from-emerald-600 to-teal-500'
+                        : 'bg-gradient-to-tr from-blue-600 to-sky-500'
+                    }`}
+                  >
+                    {channelSettings.type === 'whatsapp' ? 'W' : 'T'}
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900">{channelSettings.displayName}</h4>
+                    <p className="text-xs text-gray-500 capitalize">{channelSettings.type} Channel • Status: <span className="font-semibold text-emerald-600">{channelSettings.status}</span></p>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncChannelMetadata}
+                  isLoading={isSyncingSettings}
+                  icon={<RefreshCw className={`w-3.5 h-3.5 ${isSyncingSettings ? 'animate-spin' : ''}`} />}
+                  className="bg-white hover:bg-gray-50 border-gray-200 shadow-xs text-xs font-semibold"
+                >
+                  {isSyncingSettings ? 'Syncing with Provider...' : `Sync from ${channelSettings.type === 'whatsapp' ? 'Meta' : 'Telegram'}`}
+                </Button>
+              </div>
+
+              {/* WhatsApp Meta Provider Metadata */}
+              {channelSettings.type === 'whatsapp' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                      Meta WhatsApp Business Account (WABA) Details
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Verified Name */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Verified Business Name
+                      </label>
+                      <span className="text-sm font-semibold text-gray-900 block truncate">
+                        {channelSettings.metadata.verifiedName || 'Not configured'}
+                      </span>
+                    </div>
+
+                    {/* Display Phone Number */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Display Phone Number
+                      </label>
+                      <span className="text-sm font-semibold text-gray-900 block truncate">
+                        {channelSettings.metadata.displayPhoneNumber || channelSettings.metadata.businessPhoneNumber || 'Not configured'}
+                      </span>
+                    </div>
+
+                    {/* Name Approval Status */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Meta Name Approval Status
+                      </label>
+                      <div className="pt-0.5">
+                        {channelSettings.metadata.nameStatus ? (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              channelSettings.metadata.nameStatus === 'APPROVED' ||
+                              channelSettings.metadata.nameStatus === 'AVAILABLE_WITHOUT_REVIEW'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : channelSettings.metadata.nameStatus === 'PENDING_REVIEW'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                            }`}
+                          >
+                            {channelSettings.metadata.nameStatus === 'APPROVED' ||
+                            channelSettings.metadata.nameStatus === 'AVAILABLE_WITHOUT_REVIEW' ? (
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            ) : channelSettings.metadata.nameStatus === 'PENDING_REVIEW' ? (
+                              <Clock className="w-3.5 h-3.5" />
+                            ) : (
+                              <XCircle className="w-3.5 h-3.5" />
+                            )}
+                            {channelSettings.metadata.nameStatus}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Unknown / Pending</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quality Rating */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Phone Number Quality Rating
+                      </label>
+                      <div className="pt-0.5">
+                        {channelSettings.metadata.qualityRating ? (
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              channelSettings.metadata.qualityRating === 'GREEN'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : channelSettings.metadata.qualityRating === 'YELLOW'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                            }`}
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                channelSettings.metadata.qualityRating === 'GREEN'
+                                  ? 'bg-emerald-500 animate-pulse'
+                                  : channelSettings.metadata.qualityRating === 'YELLOW'
+                                  ? 'bg-amber-500'
+                                  : 'bg-rose-500'
+                              }`}
+                            />
+                            {channelSettings.metadata.qualityRating === 'GREEN'
+                              ? 'HIGH (Green)'
+                              : channelSettings.metadata.qualityRating === 'YELLOW'
+                              ? 'MEDIUM (Yellow)'
+                              : 'LOW (Red)'}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">Unknown</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Phone Number ID */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Phone Number ID
+                      </label>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono text-gray-800 truncate">
+                          {channelSettings.metadata.phoneNumberId || '—'}
+                        </span>
+                        {channelSettings.metadata.phoneNumberId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(channelSettings.metadata.phoneNumberId!);
+                              showToast('Phone Number ID copied to clipboard', 'success');
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+                            title="Copy Phone ID"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* WABA ID */}
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        WhatsApp Business Account (WABA) ID
+                      </label>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono text-gray-800 truncate">
+                          {channelSettings.metadata.wabaId || '—'}
+                        </span>
+                        {channelSettings.metadata.wabaId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(channelSettings.metadata.wabaId!);
+                              showToast('WABA ID copied to clipboard', 'success');
+                            }}
+                            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+                            title="Copy WABA ID"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* WABA Name / Account Details */}
+                    {channelSettings.metadata.wabaName && (
+                      <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                          WABA Account Name
+                        </label>
+                        <span className="text-xs font-semibold text-gray-800 block truncate">
+                          {channelSettings.metadata.wabaName}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Currency & Timezone */}
+                    {channelSettings.metadata.currency && (
+                      <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                          Currency & Timezone
+                        </label>
+                        <span className="text-xs font-medium text-gray-700 block truncate">
+                          {channelSettings.metadata.currency} • {channelSettings.metadata.timezoneId || 'UTC'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Access Token Security Status */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5 text-slate-600" />
+                        System User Access Token
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        {channelSettings.metadata.hasAccessToken ? 'Securely Encrypted (AES-256)' : 'Missing'}
+                      </span>
+                    </div>
+                    {channelSettings.metadata.maskedAccessToken && (
+                      <p className="text-xs font-mono text-slate-500 bg-white p-2 rounded-lg border border-slate-200">
+                        {channelSettings.metadata.maskedAccessToken}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Telegram Provider Metadata */}
+              {channelSettings.type === 'telegram' && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-2 border-b border-gray-100">
+                    <Bot className="w-4 h-4 text-blue-600" />
+                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                      Telegram Bot Configuration
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Bot Username
+                      </label>
+                      <span className="text-sm font-semibold text-gray-900 block truncate">
+                        {channelSettings.metadata.botUsername ? `@${channelSettings.metadata.botUsername}` : 'Not detected'}
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Bot First Name
+                      </label>
+                      <span className="text-sm font-semibold text-gray-900 block truncate">
+                        {channelSettings.metadata.botFirstName || 'Not set'}
+                      </span>
+                    </div>
+
+                    {channelSettings.metadata.botId && (
+                      <div className="p-3.5 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                          Telegram Bot ID
+                        </label>
+                        <span className="text-xs font-mono text-gray-800 block truncate">
+                          {channelSettings.metadata.botId}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bot Token Status */}
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5 text-slate-600" />
+                        Bot API Token
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        {channelSettings.metadata.hasBotToken ? 'Encrypted (AES-256)' : 'Missing'}
+                      </span>
+                    </div>
+                    {channelSettings.metadata.maskedBotToken && (
+                      <p className="text-xs font-mono text-slate-500 bg-white p-2 rounded-lg border border-slate-200">
+                        {channelSettings.metadata.maskedBotToken}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Danger Zone: Disconnect */}
+              <div className="pt-4 border-t border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h5 className="text-xs font-bold text-red-600">Disconnect Channel</h5>
+                  <p className="text-[11px] text-gray-500">
+                    Remove webhook registrations and disconnect this {channelSettings.type} integration.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (activeChannel) {
+                      handleOpenDisconnectModal(activeChannel);
+                    }
+                  }}
+                  className="text-red-600 hover:bg-red-50 border-red-200"
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                >
+                  Disconnect Channel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="py-8 text-center text-xs text-gray-500">
+              No settings found for this channel.
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" onClick={() => setIsSettingsModalOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ==================== MODAL: Disconnect Channel Confirmation ==================== */}
+      <Modal
+        isOpen={isDisconnectModalOpen}
+        onClose={() => setIsDisconnectModalOpen(false)}
+        title="Disconnect Channel"
+        description="Are you sure you want to disconnect this channel?"
+      >
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-amber-950">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              Disconnecting "{channelToDisconnect?.displayName || channelToDisconnect?.display_name || 'Channel'}"
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-amber-800 text-[11px]">
+              <li>Omni Platform will immediately stop receiving incoming messages on this channel.</li>
+              <li>The default automation flow will be unlinked automatically.</li>
+              <li>Historical message logs and past conversations will remain safely archived.</li>
+            </ul>
+          </div>
+
+          <p className="text-xs text-gray-600">
+            You can reconnect this {channelToDisconnect?.type} channel at any time in the future.
+          </p>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setIsDisconnectModalOpen(false)}
+              disabled={isDisconnecting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={handleConfirmDisconnect}
+              isLoading={isDisconnecting}
+              icon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Disconnect Channel
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

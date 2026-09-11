@@ -29,9 +29,62 @@ export interface Channel {
   status: ChannelStatus;
   defaultFlowId?: string | null;
   default_flow_id?: string | null;
+  // Provider / Meta metadata (populated for quick display)
+  verifiedName?: string | null;
+  verified_name?: string | null;
+  displayPhoneNumber?: string | null;
+  display_phone_number?: string | null;
+  qualityRating?: string | null;
+  quality_rating?: string | null;
+  nameStatus?: string | null;
+  name_status?: string | null;
+  codeVerificationStatus?: string | null;
+  code_verification_status?: string | null;
+  botUsername?: string | null;
+  bot_username?: string | null;
+  botFirstName?: string | null;
+  bot_first_name?: string | null;
+  phoneNumberId?: string | null;
+  phone_number_id?: string | null;
+  wabaId?: string | null;
+  waba_id?: string | null;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
+}
+
+export interface ChannelSettings {
+  id: string;
+  tenantId: string;
+  type: ChannelType;
+  displayName: string;
+  status: string;
+  defaultFlowId: string | null;
+  createdAt: string;
+  metadata: {
+    // WhatsApp Meta fields
+    phoneNumberId?: string;
+    wabaId?: string;
+    verifiedName?: string | null;
+    displayPhoneNumber?: string | null;
+    businessPhoneNumber?: string | null;
+    qualityRating?: 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN' | string | null;
+    nameStatus?: 'APPROVED' | 'AVAILABLE_WITHOUT_REVIEW' | 'PENDING_REVIEW' | 'DECLINED' | 'EXPIRED' | string | null;
+    codeVerificationStatus?: 'VERIFIED' | 'NOT_VERIFIED' | string | null;
+    wabaName?: string | null;
+    timezoneId?: string | null;
+    currency?: string | null;
+    onboardedVia?: string | null;
+    hasAccessToken?: boolean;
+    maskedAccessToken?: string;
+    // Telegram fields
+    botUsername?: string | null;
+    botFirstName?: string | null;
+    botId?: string | null;
+    hasBotToken?: boolean;
+    maskedBotToken?: string;
+    webhookSecretToken?: string | null;
+  };
 }
 
 export interface WhatsAppOnboardingConfig {
@@ -342,6 +395,8 @@ export interface Flow {
   definition: FlowDefinition;
   publishedAt?: string | null;
   published_at?: string | null;
+  deletedAt?: string | null;
+  deleted_at?: string | null;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;

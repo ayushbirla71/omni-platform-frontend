@@ -20,6 +20,8 @@ import {
   StopCircle,
   Brain,
   Split,
+  BookOpen,
+  Trash2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from '../common/Button';
@@ -37,6 +39,7 @@ interface FlowToolbarProps {
   onRedo: () => void;
   onSaveDraft: () => void;
   onPublish: () => void;
+  onDeleteFlow?: () => void;
   isSaving: boolean;
   isPublishing: boolean;
   isValid: boolean;
@@ -44,6 +47,7 @@ interface FlowToolbarProps {
   onZoomOut: () => void;
   onFitView: () => void;
   onAddNode: (type: FlowNodeType) => void;
+  onOpenHelp?: () => void;
 }
 
 export const FlowToolbar: React.FC<FlowToolbarProps> = ({
@@ -57,6 +61,7 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
   onRedo,
   onSaveDraft,
   onPublish,
+  onDeleteFlow,
   isSaving,
   isPublishing,
   isValid,
@@ -64,6 +69,7 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
   onZoomOut,
   onFitView,
   onAddNode,
+  onOpenHelp,
 }) => {
   const [isAddMenuOpen, setIsAddMenuOpen] = React.useState(false);
 
@@ -97,8 +103,21 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
           </div>
         </div>
 
-        {/* Right: History Stack & Actions */}
+        {/* Right: History Stack, Help & Actions */}
         <div className="flex items-center gap-2">
+          {/* Working System & Node Guide Trigger */}
+          {onOpenHelp && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenHelp}
+              icon={<BookOpen className="w-3.5 h-3.5 text-indigo-600" />}
+              className="text-xs font-semibold text-indigo-700 bg-indigo-50/50 hover:bg-indigo-50 border-indigo-200"
+            >
+              Node Guide
+            </Button>
+          )}
+
           {/* Undo / Redo Buttons */}
           <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50 p-0.5">
             <button
@@ -140,6 +159,17 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
           >
             Publish
           </Button>
+
+          {onDeleteFlow && (
+            <button
+              type="button"
+              onClick={onDeleteFlow}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 border border-gray-200 hover:border-red-200 transition-colors"
+              title="Delete Flow"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -249,6 +279,19 @@ export const FlowToolbar: React.FC<FlowToolbarProps> = ({
         >
           <Maximize2 className="w-4 h-4" />
         </button>
+
+        {onOpenHelp && (
+          <>
+            <div className="h-4 w-px bg-gray-200" />
+            <button
+              onClick={onOpenHelp}
+              className="p-1.5 rounded-xl text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition-colors flex items-center gap-1 text-xs font-semibold"
+              title="Open Node Working System Guide"
+            >
+              <BookOpen className="w-4 h-4" />
+            </button>
+          </>
+        )}
       </div>
     </>
   );

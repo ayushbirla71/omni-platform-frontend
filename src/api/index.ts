@@ -2,6 +2,7 @@ import { apiClient } from './client';
 import type {
   AuthResponse,
   Channel,
+  ChannelSettings,
   ChannelType,
   WhatsAppOnboardingConfig,
   OnboardingCapacity,
@@ -62,6 +63,12 @@ export const authApi = {
 // ==================== CHANNELS API ====================
 export const channelsApi = {
   list: () => apiClient.get<Channel[]>('/channels'),
+
+  getSettings: (id: string) => apiClient.get<ChannelSettings>(`/channels/${id}/settings`),
+
+  sync: (id: string) => apiClient.post<ChannelSettings>(`/channels/${id}/sync`),
+
+  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/channels/${id}`),
 
   create: (data: { type: ChannelType; displayName: string; credentials?: Record<string, any> }) =>
     apiClient.post<Channel>('/channels', data),
