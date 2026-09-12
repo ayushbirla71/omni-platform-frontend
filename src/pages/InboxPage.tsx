@@ -1082,30 +1082,6 @@ export const InboxPage: React.FC = () => {
                               </div>
                             )}
                           </div>
-
-                          {/* Failure Error Callout Banner for Templates */}
-                          {msg.status === 'failed' && (
-                            <div className="mt-2 flex items-start gap-2.5 p-3 bg-red-50 dark:bg-red-950/90 border-2 border-red-400/80 dark:border-red-600 rounded-xl text-xs w-full shadow-sm">
-                              <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 mt-0.5">
-                                <AlertCircle className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0 flex-1 space-y-1">
-                                <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                                  <p className="font-extrabold text-xs text-red-900 dark:text-red-100 tracking-tight">
-                                    Delivery Failed
-                                  </p>
-                                  {(msg.errorCode || msg.error_code) && (
-                                    <span className="px-1.5 py-0.5 rounded bg-red-200/80 dark:bg-red-900 text-red-900 dark:text-red-100 font-mono font-bold text-[10px] border border-red-300 dark:border-red-700">
-                                      Error #{msg.errorCode || msg.error_code}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-red-950 dark:text-red-50 font-semibold leading-relaxed break-words">
-                                  {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
-                                </p>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       ) : (
                         <div
@@ -1348,30 +1324,6 @@ export const InboxPage: React.FC = () => {
                                 )}
                               </div>
                             )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Outbound Failure Error Callout Banner for Regular Messages */}
-                      {isOutbound && !isTemplate && msg.status === 'failed' && (
-                        <div className="mt-2 flex items-start gap-2.5 p-3 bg-red-50 dark:bg-red-950/90 border-2 border-red-400/80 dark:border-red-600 rounded-xl text-xs max-w-md shadow-sm">
-                          <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 mt-0.5">
-                            <AlertCircle className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                              <p className="font-extrabold text-xs text-red-900 dark:text-red-100 tracking-tight">
-                                Delivery Failed
-                              </p>
-                              {(msg.errorCode || msg.error_code) && (
-                                <span className="px-1.5 py-0.5 rounded bg-red-200/80 dark:bg-red-900 text-red-900 dark:text-red-100 font-mono font-bold text-[10px] border border-red-300 dark:border-red-700">
-                                  Error #{msg.errorCode || msg.error_code}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-red-950 dark:text-red-50 font-semibold leading-relaxed break-words">
-                              {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
-                            </p>
                           </div>
                         </div>
                       )}
