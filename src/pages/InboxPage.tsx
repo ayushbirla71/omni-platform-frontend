@@ -65,6 +65,8 @@ import { Spinner } from '../components/common/Tabs';
 import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { formatDateTime, formatRelativeTime, cn } from '../lib/utils';
+import { WhatsAppTemplateCard } from '../components/chat/WhatsAppTemplateCard';
+import { APPROVED_TEMPLATES_CATALOG, registerDynamicTemplates } from '../utils/whatsapp-templates';
 
 export const InboxPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -126,7 +128,7 @@ export const InboxPage: React.FC = () => {
 
   // WhatsApp Quick Template Modal State
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>(APPROVED_TEMPLATES_CATALOG);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
@@ -562,10 +564,6 @@ export const InboxPage: React.FC = () => {
   const openTemplateModal = async () => {
     if (!activeConversation) return;
     const channelId = activeConversation.channelId || (activeConversation as any).channel_id;
-    if (!channelId) {
-      showToast('No channel linked to this conversation', 'error');
-      return;
-    }
 
     setIsTemplateModalOpen(true);
     setIsLoadingTemplates(true);
@@ -574,15 +572,29 @@ export const InboxPage: React.FC = () => {
     setTemplateHeaderValue('');
 
     try {
-      const templates = await channelsApi.getTemplates(channelId);
-      const approved = templates.filter((t) => !t.status || t.status.toUpperCase() === 'APPROVED');
-      const listToShow = approved.length > 0 ? approved : templates;
-      setChannelTemplates(listToShow);
-      if (listToShow.length > 0) {
-        handleSelectTemplate(listToShow[0]);
+      if (channelId) {
+        const templates = await channelsApi.getTemplates(channelId);
+        const approved = templates.filter((t) => !t.status || t.status.toUpperCase() === 'APPROVED');
+        const listToShow = approved.length > 0 ? approved : templates;
+        if (listToShow && listToShow.length > 0) {
+          setChannelTemplates(listToShow);
+          registerDynamicTemplates(listToShow);
+          handleSelectTemplate(listToShow[0]);
+        } else {
+          setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
+          registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
+          handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+        }
+      } else {
+        setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
+        registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
+        handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to load templates for channel', 'error');
+      console.warn('Using catalog fallback templates:', err);
+      setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
+      registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
+      handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
     } finally {
       setIsLoadingTemplates(false);
     }
@@ -591,6 +603,12 @@ export const InboxPage: React.FC = () => {
   const handleSelectTemplate = (tpl: WhatsAppTemplate) => {
     setSelectedTemplate(tpl);
     const newParams: Record<string, string> = {};
+
+    const headerComp = tpl.components?.find((c) => c.type === 'HEADER');
+    let defaultHeaderValue = '';
+    if (headerComp?.example?.header_handle?.[0]) {
+      defaultHeaderValue = headerComp.example.header_handle[0];
+    }
 
     tpl.components?.forEach((comp) => {
       if (comp.type === 'BODY' && comp.text) {
@@ -609,7 +627,7 @@ export const InboxPage: React.FC = () => {
     });
 
     setTemplateParams(newParams);
-    setTemplateHeaderValue('');
+    setTemplateHeaderValue(defaultHeaderValue);
   };
 
   const handleSendTemplate = async () => {
@@ -619,6 +637,7 @@ export const InboxPage: React.FC = () => {
 
     const headerComp = selectedTemplate.components?.find((c) => c.type === 'HEADER');
     const headerType = headerComp?.format as any;
+    const finalHeaderValue = templateHeaderValue.trim() || headerComp?.example?.header_handle?.[0] || undefined;
 
     try {
       const sentMsg = await conversationsApi.sendTemplate(selectedConvId, {
@@ -626,7 +645,7 @@ export const InboxPage: React.FC = () => {
         templateLanguage: selectedTemplate.language || 'en',
         templateParams,
         headerType: headerType && ['TEXT', 'IMAGE', 'DOCUMENT', 'VIDEO'].includes(headerType) ? headerType : undefined,
-        headerValue: templateHeaderValue.trim() || undefined,
+        headerValue: finalHeaderValue,
       });
 
       setMessages((prev) => [...prev, sentMsg]);
@@ -956,7 +975,11 @@ export const InboxPage: React.FC = () => {
                   const isDocument = msgType === 'document';
                   const isAudio = msgType === 'audio';
                   const isVideo = msgType === 'video';
-                  const isTemplate = msgType === 'template';
+                  const isTemplate =
+                    msgType === 'template' ||
+                    !!msg.content?.templateName ||
+                    !!msg.content?.template_name ||
+                    (typeof msg.text === 'string' && msg.text.startsWith('[Template:'));
                   const isOrder = msgType === 'order' || !!(msg.raw as any)?.order || !!msg.content?.order;
                   const rawOrderData = (msg.raw as any)?.order || msg.content?.order;
                   const orderProductItems: Array<{ product_retailer_id?: string; sku?: string; name?: string; quantity?: number; item_price?: number; unitPrice?: number; currency?: string }> =
@@ -973,224 +996,249 @@ export const InboxPage: React.FC = () => {
                       key={msg._id || msg.id || index}
                       className={cn('flex flex-col', isOutbound ? 'items-end' : 'items-start')}
                     >
-                      <div
-                        className={cn(
-                          'max-w-md px-3.5 py-2.5 rounded-2xl shadow-xs text-xs space-y-1.5',
-                          isOutbound
-                            ? 'bg-primary-600 text-white rounded-tr-none'
-                            : 'bg-white text-gray-900 border border-gray-200/80 rounded-tl-none'
-                        )}
-                      >
-                        {/* 1. Image / Sticker Attachment */}
-                        {isImage && mediaUrl && (
-                          <div className="relative group overflow-hidden rounded-xl border border-black/5 mb-1.5">
-                            <img
-                              src={mediaUrl}
-                              alt={msg.text || 'Received image'}
-                              className="max-h-64 w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
-                              onClick={() => setPreviewImage(mediaUrl)}
-                              loading="lazy"
-                            />
-                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewImage(mediaUrl)}
-                                className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs"
-                                title="View full image"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 2. Document / PDF Attachment */}
-                        {isDocument && (
+                      {isTemplate ? (
+                        <div className={cn('flex flex-col max-w-[420px]', isOutbound ? 'items-end' : 'items-start')}>
+                          <WhatsAppTemplateCard
+                            message={msg}
+                            knownTemplates={channelTemplates}
+                            isOutbound={isOutbound}
+                            onQuickReplyClick={(replyText) => {
+                              setMessageText(replyText);
+                            }}
+                          />
+                          {/* Message Timestamp & Status Ticks */}
                           <div
                             className={cn(
-                              'flex items-center gap-3 p-3 rounded-xl border mb-1.5',
-                              isOutbound
-                                ? 'bg-primary-700/40 border-primary-400/30 text-white'
-                                : 'bg-gray-50 border-gray-200 text-gray-800'
+                              'flex items-center gap-1 text-[10px] pt-1 px-1',
+                              isOutbound ? 'text-gray-400 justify-end' : 'text-gray-400 justify-start'
                             )}
                           >
-                            <div className={cn(
-                              'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                              isOutbound ? 'bg-primary-500/50' : 'bg-red-50 text-red-600'
-                            )}>
-                              <FileText className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-xs truncate">
-                                {msg.content?.filename || (msg.text?.startsWith('[Document') ? msg.text.replace(/^\[Document:?\s*|\]$/g, '') : msg.text) || 'Document'}
-                              </p>
-                              <p className={cn('text-[10px]', isOutbound ? 'text-primary-200' : 'text-gray-400')}>
-                                {msg.content?.filesize ? `${Math.round(msg.content.filesize / 1024)} KB` : 'Attachment'}
-                              </p>
-                            </div>
-                            {mediaUrl && (
-                              <a
-                                href={mediaUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                download
-                                className={cn(
-                                  'p-2 rounded-lg transition-colors shrink-0',
-                                  isOutbound
-                                    ? 'bg-white/20 hover:bg-white/30 text-white'
-                                    : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                            <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
+                            {isOutbound && (
+                              <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
+                                {msg.status === 'failed' ? (
+                                  <AlertCircle className="w-3 h-3 text-red-500" />
+                                ) : msg.status === 'read' ? (
+                                  <CheckCheck className="w-3 h-3 text-sky-500" />
+                                ) : msg.status === 'delivered' ? (
+                                  <CheckCheck className="w-3 h-3 text-emerald-500" />
+                                ) : (
+                                  <Check className="w-3 h-3 text-gray-400" />
                                 )}
-                                title="Download document"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
+                              </span>
                             )}
                           </div>
-                        )}
-
-                        {/* 3. Audio / Voice Note */}
-                        {isAudio && (
-                          <div className="pt-1 pb-0.5 min-w-[240px]">
-                            {mediaUrl ? (
-                              <audio
-                                controls
-                                src={mediaUrl}
-                                className="w-full h-8"
-                                preload="metadata"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-2 p-2 rounded-lg bg-black/10 text-xs">
-                                <Music className="w-4 h-4" />
-                                <span>Voice / Audio message</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 4. Video Player */}
-                        {isVideo && mediaUrl && (
-                          <div className="rounded-xl overflow-hidden mb-1.5 border border-black/5">
-                            <video
-                              controls
-                              src={mediaUrl}
-                              className="max-h-64 w-full rounded-xl"
-                              preload="metadata"
-                            />
-                          </div>
-                        )}
-
-                        {/* 5. WhatsApp Template Preview Badge */}
-                        {isTemplate && (
-                          <div className={cn(
-                            'px-2 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider mb-1 inline-block',
-                            isOutbound ? 'bg-primary-700 text-primary-100' : 'bg-gray-100 text-gray-600'
-                          )}>
-                            Template: {msg.content?.templateName || 'WhatsApp Template'}
-                          </div>
-                        )}
-
-                        {/* 6. WhatsApp Inbound Cart / Order */}
-                        {isOrder && (
-                          <div
-                            className={cn(
-                              'p-3 rounded-xl border mb-1.5 space-y-2 min-w-[240px]',
-                              isOutbound
-                                ? 'bg-primary-700/40 border-primary-400/30 text-white'
-                                : 'bg-emerald-50/80 border-emerald-200 text-gray-900'
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-2 border-b border-emerald-200/60 pb-1.5">
-                              <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-800">
-                                <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                                <span>WhatsApp Cart Order</span>
-                              </div>
-                              <Badge variant="success" size="sm">
-                                Cart
-                              </Badge>
-                            </div>
-
-                            {/* Product Items */}
-                            <div className="space-y-1 pt-0.5">
-                              {orderProductItems.length > 0 ? (
-                                orderProductItems.map((item, idx) => (
-                                  <div key={idx} className="flex items-center justify-between text-xs">
-                                    <div className="truncate max-w-[180px]">
-                                      <span className="font-semibold text-gray-800">
-                                        {item.name || item.product_retailer_id || item.sku || `Item #${idx + 1}`}
-                                      </span>
-                                      <span className="text-[11px] text-gray-500 ml-1.5 font-medium">
-                                        x{item.quantity || 1}
-                                      </span>
-                                    </div>
-                                    <span className="font-semibold text-gray-900 shrink-0 ml-2">
-                                      {item.currency || 'INR'}{' '}
-                                      {(
-                                        Number(item.item_price || item.unitPrice || 0) * Number(item.quantity || 1)
-                                      ).toLocaleString()}
-                                    </span>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-xs italic text-gray-500">Cart items received from customer</p>
-                              )}
-                            </div>
-
-                            {/* Total Amount & Notes */}
-                            {orderProductItems.length > 0 && (
-                              <div className="border-t border-emerald-200/60 pt-1.5 flex items-center justify-between text-xs font-bold">
-                                <span>Estimated Total:</span>
-                                <span className="text-emerald-700 font-extrabold text-sm">
-                                  {orderCurrency} {orderTotal.toLocaleString()}
-                                </span>
-                              </div>
-                            )}
-
-                            {orderCustomerNote && (
-                              <p className="text-[11px] text-gray-600 italic bg-white/70 p-1.5 rounded-lg border border-emerald-100">
-                                Note: "{orderCustomerNote}"
-                              </p>
-                            )}
-
-                            <div className="pt-0.5">
-                              <Link
-                                to="/orders"
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
-                              >
-                                <span>Manage in Orders</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </Link>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Message Text (Hide placeholder [Image]/[Audio] if media is rendered directly) */}
-                        {(!mediaUrl || (!isImage && !isVideo && !isAudio && !isDocument) || (msg.text && !['[Image]', '[Audio]', '[Video]', '[Sticker]', '[Document]'].includes(msg.text.trim()) && !msg.text.startsWith('[Template:'))) && !isOrder && (
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                        )}
-
-                        {/* Message Timestamp & Status Ticks */}
+                        </div>
+                      ) : (
                         <div
                           className={cn(
-                            'flex items-center justify-end gap-1 text-[10px] pt-1',
-                            isOutbound ? 'text-primary-100' : 'text-gray-400'
+                            'max-w-md px-3.5 py-2.5 rounded-2xl shadow-xs text-xs space-y-1.5',
+                            isOutbound
+                              ? 'bg-primary-600 text-white rounded-tr-none'
+                              : 'bg-white text-gray-900 border border-gray-200/80 rounded-tl-none'
                           )}
                         >
-                          <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
-                          {isOutbound && (
-                            <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
-                              {msg.status === 'failed' ? (
-                                <AlertCircle className="w-3 h-3 text-red-300" />
-                              ) : msg.status === 'read' ? (
-                                <CheckCheck className="w-3 h-3 text-sky-200" />
-                              ) : msg.status === 'delivered' ? (
-                                <CheckCheck className="w-3 h-3 text-primary-200" />
-                              ) : (
-                                <Check className="w-3 h-3 text-primary-200" />
-                              )}
-                            </span>
+                          {/* 1. Image / Sticker Attachment */}
+                          {isImage && mediaUrl && (
+                            <div className="relative group overflow-hidden rounded-xl border border-black/5 mb-1.5">
+                              <img
+                                src={mediaUrl}
+                                alt={msg.text || 'Received image'}
+                                className="max-h-64 w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                                onClick={() => setPreviewImage(mediaUrl)}
+                                loading="lazy"
+                              />
+                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewImage(mediaUrl)}
+                                  className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs"
+                                  title="View full image"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
                           )}
+
+                          {/* 2. Document / PDF Attachment */}
+                          {isDocument && (
+                            <div
+                              className={cn(
+                                'flex items-center gap-3 p-3 rounded-xl border mb-1.5',
+                                isOutbound
+                                  ? 'bg-primary-700/40 border-primary-400/30 text-white'
+                                  : 'bg-gray-50 border-gray-200 text-gray-800'
+                              )}
+                            >
+                              <div className={cn(
+                                'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                                isOutbound ? 'bg-primary-500/50' : 'bg-red-50 text-red-600'
+                              )}>
+                                <FileText className="w-5 h-5" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-xs truncate">
+                                  {msg.content?.filename || (msg.text?.startsWith('[Document') ? msg.text.replace(/^\[Document:?\s*|\]$/g, '') : msg.text) || 'Document'}
+                                </p>
+                                <p className={cn('text-[10px]', isOutbound ? 'text-primary-200' : 'text-gray-400')}>
+                                  {msg.content?.filesize ? `${Math.round(msg.content.filesize / 1024)} KB` : 'Attachment'}
+                                </p>
+                              </div>
+                              {mediaUrl && (
+                                <a
+                                  href={mediaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  download
+                                  className={cn(
+                                    'p-2 rounded-lg transition-colors shrink-0',
+                                    isOutbound
+                                      ? 'bg-white/20 hover:bg-white/30 text-white'
+                                      : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                                  )}
+                                  title="Download document"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 3. Audio / Voice Note */}
+                          {isAudio && (
+                            <div className="pt-1 pb-0.5 min-w-[240px]">
+                              {mediaUrl ? (
+                                <audio
+                                  controls
+                                  src={mediaUrl}
+                                  className="w-full h-8"
+                                  preload="metadata"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2 p-2 rounded-lg bg-black/10 text-xs">
+                                  <Music className="w-4 h-4" />
+                                  <span>Voice / Audio message</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 4. Video Player */}
+                          {isVideo && mediaUrl && (
+                            <div className="rounded-xl overflow-hidden mb-1.5 border border-black/5">
+                              <video
+                                controls
+                                src={mediaUrl}
+                                className="max-h-64 w-full rounded-xl"
+                                preload="metadata"
+                              />
+                            </div>
+                          )}
+
+                          {/* 5. WhatsApp Inbound Cart / Order */}
+                          {isOrder && (
+                            <div
+                              className={cn(
+                                'p-3 rounded-xl border mb-1.5 space-y-2 min-w-[240px]',
+                                isOutbound
+                                  ? 'bg-primary-700/40 border-primary-400/30 text-white'
+                                  : 'bg-emerald-50/80 border-emerald-200 text-gray-900'
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2 border-b border-emerald-200/60 pb-1.5">
+                                <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-800">
+                                  <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                                  <span>WhatsApp Cart Order</span>
+                                </div>
+                                <Badge variant="success" size="sm">
+                                  Cart
+                                </Badge>
+                              </div>
+
+                              {/* Product Items */}
+                              <div className="space-y-1 pt-0.5">
+                                {orderProductItems.length > 0 ? (
+                                  orderProductItems.map((item, idx) => (
+                                    <div key={idx} className="flex items-center justify-between text-xs">
+                                      <div className="truncate max-w-[180px]">
+                                        <span className="font-semibold text-gray-800">
+                                          {item.name || item.product_retailer_id || item.sku || `Item #${idx + 1}`}
+                                        </span>
+                                        <span className="text-[11px] text-gray-500 ml-1.5 font-medium">
+                                          x{item.quantity || 1}
+                                        </span>
+                                      </div>
+                                      <span className="font-semibold text-gray-900 shrink-0 ml-2">
+                                        {item.currency || 'INR'}{' '}
+                                        {(
+                                          Number(item.item_price || item.unitPrice || 0) * Number(item.quantity || 1)
+                                        ).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-xs italic text-gray-500">Cart items received from customer</p>
+                                )}
+                              </div>
+
+                              {/* Total Amount & Notes */}
+                              {orderProductItems.length > 0 && (
+                                <div className="border-t border-emerald-200/60 pt-1.5 flex items-center justify-between text-xs font-bold">
+                                  <span>Estimated Total:</span>
+                                  <span className="text-emerald-700 font-extrabold text-sm">
+                                    {orderCurrency} {orderTotal.toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+
+                              {orderCustomerNote && (
+                                <p className="text-[11px] text-gray-600 italic bg-white/70 p-1.5 rounded-lg border border-emerald-100">
+                                  Note: "{orderCustomerNote}"
+                                </p>
+                              )}
+
+                              <div className="pt-0.5">
+                                <Link
+                                  to="/orders"
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
+                                >
+                                  <span>Manage in Orders</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Message Text (Hide placeholder [Image]/[Audio] if media is rendered directly) */}
+                          {(!mediaUrl || (!isImage && !isVideo && !isAudio && !isDocument) || (msg.text && !['[Image]', '[Audio]', '[Video]', '[Sticker]', '[Document]'].includes(msg.text.trim()) && !msg.text.startsWith('[Template:'))) && !isOrder && (
+                            <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                          )}
+
+                          {/* Message Timestamp & Status Ticks */}
+                          <div
+                            className={cn(
+                              'flex items-center justify-end gap-1 text-[10px] pt-1',
+                              isOutbound ? 'text-primary-100' : 'text-gray-400'
+                            )}
+                          >
+                            <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
+                            {isOutbound && (
+                              <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
+                                {msg.status === 'failed' ? (
+                                  <AlertCircle className="w-3 h-3 text-red-300" />
+                                ) : msg.status === 'read' ? (
+                                  <CheckCheck className="w-3 h-3 text-sky-200" />
+                                ) : msg.status === 'delivered' ? (
+                                  <CheckCheck className="w-3 h-3 text-primary-200" />
+                                ) : (
+                                  <Check className="w-3 h-3 text-primary-200" />
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })
@@ -2004,10 +2052,10 @@ export const InboxPage: React.FC = () => {
               {/* Dynamic Parameter Inputs */}
               {selectedTemplate && (
                 <div className="space-y-3">
-                  {/* Header parameter if applicable */}
+                  {/* Header parameter if applicable for text variables */}
                   {selectedTemplate.components?.some((c) => c.type === 'HEADER' && c.format === 'TEXT' && c.text?.includes('{{1}}')) && (
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                         Header Variable {'{{1}}'}
                       </label>
                       <input
@@ -2015,20 +2063,36 @@ export const InboxPage: React.FC = () => {
                         placeholder="e.g. Order #1234"
                         value={templateHeaderValue}
                         onChange={(e) => setTemplateHeaderValue(e.target.value)}
-                        className="w-full text-xs rounded-lg border border-gray-200 px-3 py-2 bg-white focus:outline-none focus:border-primary-500"
+                        className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary-500"
+                      />
+                    </div>
+                  )}
+
+                  {/* Header Media URL for IMAGE / VIDEO / DOCUMENT */}
+                  {selectedTemplate.components?.some((c) => c.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format || '')) && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Header Media URL (Optional — Pre-filled with Meta approved asset)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://..."
+                        value={templateHeaderValue}
+                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
+                        className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary-500 font-mono text-[11px]"
                       />
                     </div>
                   )}
 
                   {Object.keys(templateParams).length > 0 && (
-                    <div className="space-y-2 p-3 bg-gray-50 border border-gray-200 rounded-xl">
-                      <span className="text-xs font-bold text-gray-800">
+                    <div className="space-y-2 p-3 bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700 rounded-xl">
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
                         Fill Template Variables:
                       </span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {Object.keys(templateParams).map((paramKey) => (
                           <div key={paramKey}>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-0.5">
+                            <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
                               Variable {'{{' + paramKey + '}}'}
                             </label>
                             <input
@@ -2038,7 +2102,7 @@ export const InboxPage: React.FC = () => {
                               onChange={(e) =>
                                 setTemplateParams((prev) => ({ ...prev, [paramKey]: e.target.value }))
                               }
-                              className="w-full text-xs rounded-lg border border-gray-200 px-2.5 py-1.5 bg-white focus:outline-none focus:border-primary-500"
+                              className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary-500"
                             />
                           </div>
                         ))}
@@ -2048,56 +2112,28 @@ export const InboxPage: React.FC = () => {
 
                   {/* Live WhatsApp Bubble Preview */}
                   <div>
-                    <span className="block text-xs font-semibold text-gray-700 mb-1">
+                    <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
                       Live WhatsApp Chat Preview:
                     </span>
-                    <div className="p-4 bg-[#EFEAE2] rounded-xl border border-[#D1D7DB] max-w-md mx-auto">
-                      <div className="bg-white rounded-lg p-3 shadow-xs space-y-2 text-xs text-gray-900 border border-gray-100">
-                        {/* Header Component */}
-                        {selectedTemplate.components?.find((c) => c.type === 'HEADER') && (
-                          <div className="font-bold text-gray-900 text-xs border-b border-gray-100 pb-1">
-                            {selectedTemplate.components
-                              .find((c) => c.type === 'HEADER')
-                              ?.text?.replace(/\{\{1\}\}/g, templateHeaderValue || '{{1}}') || '[Header Media]'}
-                          </div>
-                        )}
-
-                        {/* Body Component with live interpolation */}
-                        <div className="whitespace-pre-wrap leading-relaxed text-gray-800 text-xs">
-                          {(() => {
-                            const bodyComp = selectedTemplate.components?.find((c) => c.type === 'BODY');
-                            if (!bodyComp || !bodyComp.text) return 'Template message body';
-                            let renderedText = bodyComp.text;
-                            Object.entries(templateParams).forEach(([k, v]) => {
-                              renderedText = renderedText.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v || `{{${k}}}`);
-                            });
-                            return renderedText;
-                          })()}
-                        </div>
-
-                        {/* Footer Component */}
-                        {selectedTemplate.components?.find((c) => c.type === 'FOOTER') && (
-                          <div className="text-[10px] text-gray-500 pt-1">
-                            {selectedTemplate.components.find((c) => c.type === 'FOOTER')?.text}
-                          </div>
-                        )}
-
-                        {/* Buttons Component */}
-                        {selectedTemplate.components?.find((c) => c.type === 'BUTTONS') && (
-                          <div className="pt-2 border-t border-gray-100 space-y-1">
-                            {(selectedTemplate.components.find((c) => c.type === 'BUTTONS') as any)?.buttons?.map(
-                              (b: any, idx: number) => (
-                                <div
-                                  key={idx}
-                                  className="w-full text-center py-1.5 text-primary-600 font-semibold bg-gray-50 rounded border border-gray-200 text-[11px]"
-                                >
-                                  {b.text || 'Action Button'}
-                                </div>
-                              )
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    <div className="p-3 bg-[#EFEAE2] dark:bg-gray-900/80 rounded-xl border border-[#D1D7DB] dark:border-gray-700 flex justify-center">
+                      <WhatsAppTemplateCard
+                        message={{
+                          type: 'template',
+                          direction: 'outbound',
+                          content: {
+                            templateName: selectedTemplate.name,
+                            templateParams,
+                            headerType: selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format as any,
+                            headerValue: templateHeaderValue.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
+                            mediaUrl: templateHeaderValue.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
+                            bodyText: selectedTemplate.components?.find((c) => c.type === 'BODY')?.text,
+                            footerText: selectedTemplate.components?.find((c) => c.type === 'FOOTER')?.text,
+                            buttons: (selectedTemplate.components?.find((c) => c.type === 'BUTTONS') as any)?.buttons,
+                          },
+                        }}
+                        knownTemplates={channelTemplates}
+                        isOutbound={true}
+                      />
                     </div>
                   </div>
                 </div>

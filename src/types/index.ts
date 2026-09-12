@@ -123,21 +123,27 @@ export interface TemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
   format?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
   text?: string;
+  example?: {
+    header_handle?: string[];
+    body_text?: string[][];
+  };
   buttons?: Array<{
-    type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER';
+    type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | string;
     text: string;
     url?: string;
     phone_number?: string;
   }>;
+  [key: string]: any;
 }
 
 export interface WhatsAppTemplate {
-  id: string;
+  id?: string;
   name: string;
-  language: string;
-  status: 'APPROVED' | 'PENDING' | 'REJECTED';
-  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  language?: string;
+  status?: 'APPROVED' | 'PENDING' | 'REJECTED' | string;
+  category?: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | string;
   components: TemplateComponent[];
+  [key: string]: any;
 }
 
 // Contact
