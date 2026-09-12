@@ -30,7 +30,7 @@ import {
   Info,
 } from 'lucide-react';
 import { channelsApi, whatsappOnboardingApi, flowsApi } from '../api';
-import type {
+import {
   Channel,
   ChannelSettings,
   WhatsAppOnboardingConfig,
@@ -39,6 +39,7 @@ import type {
   Flow,
   DeepLinkResponse,
 } from '../types';
+import { getTierInfo, ALL_TIERS } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
 import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
@@ -399,6 +400,8 @@ export const ChannelsPage: React.FC = () => {
             bot_username: meta.botUsername,
             botFirstName: meta.botFirstName,
             bot_first_name: meta.botFirstName,
+            messagingLimitTier: meta.messagingLimitTier || meta.messaging_limit_tier,
+            messaging_limit_tier: meta.messagingLimitTier || meta.messaging_limit_tier,
           };
         })
       );
@@ -732,6 +735,20 @@ export const ChannelsPage: React.FC = () => {
                           Quality: {channel.qualityRating || channel.quality_rating}
                         </span>
                       )}
+
+                      {/* WhatsApp 24h Messaging Limit Tier Badge */}
+                      {(() => {
+                        const tierInfo = getTierInfo(channel.messagingLimitTier || channel.messaging_limit_tier);
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200"
+                            title={`Meta 24-Hour Messaging Limit: ${tierInfo.label}`}
+                          >
+                            <Zap className="w-2.5 h-2.5 text-purple-600" />
+                            Tier: {tierInfo.shortLabel}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1480,6 +1497,86 @@ export const ChannelsPage: React.FC = () => {
                       </div>
                     )}
                   </div>
+
+                  {/* Meta 24-Hour Messaging Limit Tier & Scaling Progression */}
+                  {(() => {
+                    const activeTier = getTierInfo(
+                      channelSettings.metadata.messagingLimitTier ||
+                      channelSettings.metadata.messaging_limit_tier
+                    );
+                    return (
+                      <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50/70 via-white to-purple-50/40 border border-purple-200/80 space-y-3.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                              <Zap className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-bold text-gray-900">
+                                24-Hour Messaging Limit Tier
+                              </h5>
+                              <p className="text-[11px] text-gray-500">
+                                Unique business-initiated customer conversations permitted per rolling 24 hours.
+                              </p>
+                            </div>
+                          </div>
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-sm">
+                            <Zap className="w-3.5 h-3.5 text-purple-600" />
+                            {activeTier.label}
+                          </span>
+                        </div>
+
+                        {/* Progression Stepper */}
+                        <div className="pt-2">
+                          <div className="grid grid-cols-6 gap-1.5">
+                            {ALL_TIERS.map((t) => {
+                              const isCurrent = t.levelNumber === activeTier.levelNumber;
+                              const isPast = t.levelNumber < activeTier.levelNumber;
+                              return (
+                                <div
+                                  key={t.tier}
+                                  className={`p-2 rounded-lg text-center transition-all border ${
+                                    isCurrent
+                                      ? 'bg-purple-600 text-white border-purple-700 shadow-md ring-2 ring-purple-300'
+                                      : isPast
+                                      ? 'bg-purple-100/70 text-purple-900 border-purple-200'
+                                      : 'bg-gray-50 text-gray-400 border-gray-100 opacity-60'
+                                  }`}
+                                >
+                                  <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5 truncate">
+                                    {t.formattedLimit}
+                                  </div>
+                                  <div
+                                    className={`text-[9px] font-medium leading-none truncate ${
+                                      isCurrent ? 'text-purple-100' : isPast ? 'text-purple-700' : 'text-gray-400'
+                                    }`}
+                                  >
+                                    {isCurrent ? 'Active' : isPast ? 'Completed' : 'Locked'}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Active Tier Description & Upgrade Strategy */}
+                        <div className="p-3 rounded-lg bg-white border border-purple-100 space-y-1.5 text-xs">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-3.5 h-3.5 text-purple-600 mt-0.5 shrink-0" />
+                            <div className="space-y-1">
+                              <p className="font-semibold text-gray-800">
+                                {activeTier.description}
+                              </p>
+                              <p className="text-gray-600 text-[11px] leading-relaxed">
+                                <span className="font-bold text-purple-700">Scaling Next Tier:</span>{' '}
+                                {activeTier.upgradeTip}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Access Token Security Status */}
                   <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">

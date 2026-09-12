@@ -18,9 +18,13 @@ import {
   Sparkles,
   Info,
   Filter,
+  AlertTriangle,
+  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 import { campaignsApi, channelsApi, contactsApi, flowsApi } from '../api';
 import type { Channel, Contact, Flow, DripStep } from '../types';
+import { getTierInfo, calculateTierCapacity } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
@@ -228,6 +232,14 @@ export const NewCampaignPage: React.FC = () => {
   };
 
   const selectedFlow = flows.find((f) => f.id === selectedFlowId);
+  const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+  const isWhatsAppChannel = selectedChannel?.type === 'whatsapp';
+  const channelTier = selectedChannel?.messagingLimitTier || selectedChannel?.messaging_limit_tier;
+  const tierInfo = useMemo(() => getTierInfo(channelTier), [channelTier]);
+  const tierCapacity = useMemo(
+    () => calculateTierCapacity(targetedContacts.length, tierInfo.limit),
+    [targetedContacts.length, tierInfo.limit]
+  );
 
   if (isLoading) {
     return (
@@ -363,11 +375,15 @@ export const NewCampaignPage: React.FC = () => {
                 className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white"
                 required
               >
-                {channels.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.displayName || c.externalId || c.type} ({c.type})
-                  </option>
-                ))}
+                {channels.map((c) => {
+                  const isWa = c.type === 'whatsapp';
+                  const tInfo = isWa ? getTierInfo(c.messagingLimitTier || c.messaging_limit_tier) : null;
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.displayName || c.externalId || c.type} ({c.type}){tInfo ? ` • ${tInfo.shortLabel}` : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -748,23 +764,172 @@ export const NewCampaignPage: React.FC = () => {
               </div>
             </div>
           )}
+          {/* WhatsApp 24-Hour Messaging Tier Capacity & Health Status */}
+          {isWhatsAppChannel && (
+            <div
+              className={cn(
+                'p-4 rounded-2xl border transition-all space-y-3.5',
+                tierCapacity.isExceeded
+                  ? 'bg-rose-50/70 border-rose-200 text-rose-950 ring-2 ring-rose-500/20'
+                  : tierCapacity.isWarning
+                  ? 'bg-amber-50/70 border-amber-200 text-amber-950 ring-2 ring-amber-500/20'
+                  : 'bg-gradient-to-br from-purple-50/60 via-slate-50 to-purple-50/30 border-purple-200/80 text-gray-900'
+              )}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={cn(
+                      'p-1.5 rounded-lg shrink-0',
+                      tierCapacity.isExceeded
+                        ? 'bg-rose-100 text-rose-700'
+                        : tierCapacity.isWarning
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-purple-100 text-purple-700'
+                    )}
+                  >
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold flex items-center gap-1.5">
+                      <span>WhatsApp 24h Messaging Tier Capacity</span>
+                      <span className="font-normal text-[11px] opacity-75">
+                        ({selectedChannel?.displayName || 'Channel'})
+                      </span>
+                    </h4>
+                    <p className="text-[11px] opacity-75">
+                      Meta rolling 24-hour business-initiated conversation quota.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-xs',
+                      tierCapacity.isExceeded
+                        ? 'bg-rose-100 text-rose-800 border-rose-300'
+                        : tierCapacity.isWarning
+                        ? 'bg-amber-100 text-amber-800 border-amber-300'
+                        : 'bg-purple-100 text-purple-800 border-purple-200'
+                    )}
+                  >
+                    <Zap className="w-3 h-3" />
+                    {tierInfo.label}
+                  </span>
+                  <span className="text-xs font-mono font-bold">
+                    {targetedContacts.length} / {tierInfo.formattedLimit} ({tierCapacity.percentage}%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Real-time Capacity Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="w-full h-2.5 bg-gray-200/80 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-300',
+                      tierCapacity.isExceeded
+                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
+                        : tierCapacity.isWarning
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500'
+                        : 'bg-gradient-to-r from-purple-500 to-indigo-600'
+                    )}
+                    style={{ width: `${tierCapacity.percentage}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] font-medium opacity-70">
+                  <span>0 contacts</span>
+                  <span>50% threshold</span>
+                  <span>Limit: {tierInfo.formattedLimit} contacts / 24h</span>
+                </div>
+              </div>
+
+              {/* Contextual Status Alerts & Mitigations */}
+              {tierCapacity.isExceeded ? (
+                <div className="p-3.5 rounded-xl bg-white/90 border border-rose-200 space-y-2 text-xs">
+                  <div className="flex items-start gap-2 text-rose-700 font-bold">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <span>⚠️ Audience Exceeds WhatsApp 24-Hour Tier Capacity by {tierCapacity.exceededBy} Contacts!</span>
+                      <p className="font-normal text-[11px] text-rose-900/80 mt-0.5 leading-relaxed">
+                        Your targeted audience ({targetedContacts.length} contacts) exceeds your Meta channel limit of {tierInfo.formattedLimit} unique conversations per 24 hours. Messages sent beyond this limit will be rejected by Meta Cloud API (Error 131048 / 131056).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-rose-100 text-[11px] space-y-1 text-gray-700">
+                    <p className="font-bold text-gray-900">Recommended Actionable Mitigations:</p>
+                    <ul className="list-disc list-inside space-y-0.5 pl-1 text-gray-600">
+                      <li>
+                        <b>Filter by Tag:</b> Narrow down audience using tags (e.g. <code>#followup</code>, <code>#vip</code>) to broadcast under {tierInfo.formattedLimit} contacts.
+                      </li>
+                      <li>
+                        <b>Use Timed Drips:</b> Switch campaign type to <b>Timed Drip Sequence</b> to stagger outbound messages across multiple days.
+                      </li>
+                      <li>
+                        <b>Scale Meta Tier:</b> Complete Meta Business Verification in Meta Business Suite to scale from Tier 250 to Tier 1K (1,000 / day) or higher.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              ) : tierCapacity.isWarning ? (
+                <div className="p-3 rounded-xl bg-white/90 border border-amber-200 flex items-start gap-2 text-xs text-amber-900">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-amber-800">
+                      Approaching 24-Hour Tier Limit ({tierCapacity.percentage}% Capacity Used)
+                    </p>
+                    <p className="text-[11px] text-amber-700 leading-relaxed">
+                      You have <b>{tierCapacity.remaining}</b> contacts remaining in your 24-hour limit ({tierInfo.formattedLimit} total). If you send other messages today, some may be throttled by Meta.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-white/80 border border-purple-100 flex items-center justify-between text-xs text-gray-700">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="text-[11px]">
+                      Audience is well within your 24-hour messaging capacity ({tierCapacity.remaining} contacts remaining).
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-semibold text-purple-700">
+                    Meta Health: Green
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
 
         {/* Submit Buttons */}
-        <div className="flex justify-end gap-3 pt-2">
-          <Link to="/campaigns">
-            <Button variant="outline" type="button">
-              Cancel
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          {isWhatsAppChannel && tierCapacity.isExceeded ? (
+            <div className="flex items-center gap-1.5 text-xs text-rose-700 font-semibold bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>Audience exceeds 24h tier limit ({targetedContacts.length} &gt; {tierInfo.formattedLimit}). Messages past the cap will fail.</span>
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <div className="flex items-center gap-3">
+            <Link to="/campaigns">
+              <Button variant="outline" type="button">
+                Cancel
+              </Button>
+            </Link>
+            <Button
+              variant="primary"
+              type="submit"
+              isLoading={isSubmitting}
+              icon={<Save className="w-4 h-4" />}
+            >
+              {tierCapacity.isExceeded
+                ? `Create Campaign (${targetedContacts.length} Recipients - Exceeds Tier)`
+                : `Create & Prepare Campaign (${targetedContacts.length} Recipients)`}
             </Button>
-          </Link>
-          <Button
-            variant="primary"
-            type="submit"
-            isLoading={isSubmitting}
-            icon={<Save className="w-4 h-4" />}
-          >
-            Create & Prepare Campaign ({targetedContacts.length} Recipients)
-          </Button>
+          </div>
         </div>
       </form>
     </div>

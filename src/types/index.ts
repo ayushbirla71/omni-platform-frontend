@@ -63,6 +63,8 @@ export interface Channel {
   phone_number_id?: string | null;
   wabaId?: string | null;
   waba_id?: string | null;
+  messagingLimitTier?: 'TIER_50' | 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED' | string | null;
+  messaging_limit_tier?: 'TIER_50' | 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED' | string | null;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -86,6 +88,8 @@ export interface ChannelSettings {
     qualityRating?: 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN' | string | null;
     nameStatus?: 'APPROVED' | 'AVAILABLE_WITHOUT_REVIEW' | 'PENDING_REVIEW' | 'DECLINED' | 'EXPIRED' | string | null;
     codeVerificationStatus?: 'VERIFIED' | 'NOT_VERIFIED' | string | null;
+    messagingLimitTier?: 'TIER_50' | 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED' | string | null;
+    messaging_limit_tier?: 'TIER_50' | 'TIER_250' | 'TIER_1K' | 'TIER_10K' | 'TIER_100K' | 'TIER_UNLIMITED' | string | null;
     wabaName?: string | null;
     timezoneId?: string | null;
     currency?: string | null;
