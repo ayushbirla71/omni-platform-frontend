@@ -47,6 +47,7 @@ import type {
 } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../context/DialogContext';
 import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -57,6 +58,7 @@ import { formatRelativeTime, getUserInitials } from '../lib/utils';
 export const SettingsPage: React.FC = () => {
   const { user, updateProfile, refreshProfile } = useAuth();
   const { showToast } = useToast();
+  const { confirm } = useDialog();
 
   const [searchParams, setSearchParams] = useSearchParams();
   const tabQuery = searchParams.get('tab') as 'profile' | 'team' | 'api-keys' | 'billing' | 'compliance' | null;
@@ -297,9 +299,14 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleRemoveMember = async (member: TeamMember) => {
-    if (!confirm(`Are you sure you want to remove ${member.name || member.email} from the workspace?`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Remove Team Member',
+      message: `Are you sure you want to remove ${member.name || member.email} from the workspace? They will lose access to all chats, contacts, and workspace tools.`,
+      confirmText: 'Remove Member',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await teamApi.remove(member.id);
       showToast('Removed team member', 'success');
@@ -336,9 +343,14 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleRevokeApiKey = async (keyId: string, name: string) => {
-    if (!confirm(`Are you sure you want to permanently revoke API key "${name}"? Any active integrations using this key will immediately fail.`)) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Revoke API Key',
+      message: `Are you sure you want to permanently revoke API key "${name}"? Any active integrations using this key will immediately fail.`,
+      confirmText: 'Revoke Key',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await apiKeysApi.revoke(keyId);
       showToast('API key revoked', 'success');

@@ -17,6 +17,7 @@ import {
 import { dealsApi, contactsApi } from '../api';
 import type { Deal, PipelineSummary, Contact } from '../types';
 import { useToast } from '../context/ToastContext';
+import { useDialog } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -60,6 +61,7 @@ export const DealsPage: React.FC = () => {
   const [editDealStage, setEditDealStage] = useState<Stage>('Lead');
 
   const { showToast } = useToast();
+  const { confirm } = useDialog();
 
   const loadDeals = async () => {
     setIsLoading(true);
@@ -142,7 +144,13 @@ export const DealsPage: React.FC = () => {
   };
 
   const handleDeleteDeal = async (dealId: string) => {
-    if (!confirm('Are you sure you want to delete this deal?')) return;
+    const ok = await confirm({
+      title: 'Delete Deal',
+      message: 'Are you sure you want to delete this deal? It will be removed from your sales pipeline.',
+      confirmText: 'Delete Deal',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       await dealsApi.delete(dealId);

@@ -37,6 +37,7 @@ import type {
   WebhookDeliveryLog,
 } from '../types';
 import { useToast } from '../context/ToastContext';
+import { useDialog } from '../context/DialogContext';
 import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -46,6 +47,7 @@ import { formatDateTime, cn } from '../lib/utils';
 
 export const AnalyticsPage: React.FC = () => {
   const { showToast } = useToast();
+  const { confirm } = useDialog();
   const [activeTab, setActiveTab] = useState<'overview' | 'sla' | 'traffic' | 'funnel' | 'webhooks'>('overview');
 
   // ==================== STATE ====================
@@ -138,7 +140,13 @@ export const AnalyticsPage: React.FC = () => {
   };
 
   const handleDeleteWebhook = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this webhook subscription?')) return;
+    const ok = await confirm({
+      title: 'Delete Webhook Subscription',
+      message: 'Are you sure you want to delete this webhook subscription? Outgoing events will no longer be dispatched to this URL.',
+      confirmText: 'Delete Subscription',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await webhooksApi.deleteSubscription(id);
       setSubscriptions((prev) => prev.filter((s) => s.id !== id));

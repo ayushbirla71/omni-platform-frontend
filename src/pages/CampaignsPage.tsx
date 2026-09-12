@@ -21,6 +21,7 @@ import {
 import { campaignsApi } from '../api';
 import type { Campaign } from '../types';
 import { useToast } from '../context/ToastContext';
+import { useDialog } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -35,6 +36,7 @@ export const CampaignsPage: React.FC = () => {
   const [sendingId, setSendingId] = useState<string | null>(null);
 
   const { showToast } = useToast();
+  const { confirm } = useDialog();
 
   const loadCampaigns = async () => {
     setIsLoading(true);
@@ -53,7 +55,13 @@ export const CampaignsPage: React.FC = () => {
   }, []);
 
   const handleSendCampaign = async (campaignId: string) => {
-    if (!confirm('Are you sure you want to execute and send this campaign now?')) return;
+    const ok = await confirm({
+      title: 'Execute Broadcast Campaign',
+      message: 'Are you sure you want to execute and send this campaign now?',
+      confirmText: 'Send Broadcast',
+      variant: 'primary',
+    });
+    if (!ok) return;
 
     setSendingId(campaignId);
     try {
@@ -68,7 +76,13 @@ export const CampaignsPage: React.FC = () => {
   };
 
   const handleDeleteCampaign = async (campaignId: string) => {
-    if (!confirm('Are you sure you want to delete this campaign?')) return;
+    const ok = await confirm({
+      title: 'Delete Campaign',
+      message: 'Are you sure you want to delete this campaign? This action cannot be undone.',
+      confirmText: 'Delete Campaign',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       await campaignsApi.delete(campaignId);

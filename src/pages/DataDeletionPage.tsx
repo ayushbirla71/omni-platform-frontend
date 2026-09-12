@@ -19,8 +19,11 @@ import { PublicLegalLayout } from '../components/layout/PublicLegalLayout';
 import { Input } from '../components/common/Input';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
+import { useDialog } from '../context/DialogContext';
 
 export const DataDeletionPage: React.FC = () => {
+  const { alert } = useDialog();
+
   // Deletion Request Form State
   const [email, setEmail] = useState('');
   const [phoneOrMetaId, setPhoneOrMetaId] = useState('');
@@ -48,7 +51,11 @@ export const DataDeletionPage: React.FC = () => {
   const handleRequestDeletion = (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() && !phoneOrMetaId.trim()) {
-      alert('Please provide either an email address, phone number, or Meta User ID to identify your records.');
+      alert({
+        title: 'Identifier Required',
+        message: 'Please provide either an email address, phone number, or Meta User ID to identify your records.',
+        variant: 'warning',
+      });
       return;
     }
 

@@ -23,6 +23,7 @@ import {
 import { contactsApi, dealsApi, channelsApi } from '../api';
 import type { Contact, Deal, Channel } from '../types';
 import { useToast } from '../context/ToastContext';
+import { useDialog } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -74,6 +75,7 @@ export const ContactsPage: React.FC = () => {
   const [editDetailTagInput, setEditDetailTagInput] = useState('');
 
   const { showToast } = useToast();
+  const { confirm } = useDialog();
 
   const loadData = async () => {
     setIsLoading(true);
@@ -164,7 +166,13 @@ export const ContactsPage: React.FC = () => {
   };
 
   const handleDeleteContact = async (contactId: string) => {
-    if (!confirm('Are you sure you want to delete this contact?')) return;
+    const ok = await confirm({
+      title: 'Delete Contact',
+      message: 'Are you sure you want to delete this contact? Conversation history and associated metadata will be permanently removed.',
+      confirmText: 'Delete Contact',
+      variant: 'danger',
+    });
+    if (!ok) return;
 
     try {
       await contactsApi.delete(contactId);

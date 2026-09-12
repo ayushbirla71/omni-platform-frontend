@@ -10,6 +10,7 @@ import {
   CheckCheck,
   AlertCircle,
   Plus,
+  ChevronLeft,
   RefreshCw,
   Phone,
   FileText,
@@ -120,6 +121,7 @@ export const InboxPage: React.FC = () => {
 
   // Media Attachment Upload Modal State
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mediaCaption, setMediaCaption] = useState('');
@@ -170,7 +172,7 @@ export const InboxPage: React.FC = () => {
       const data = await conversationsApi.list(filterStatus === 'all' ? undefined : filterStatus);
       setConversations(data);
 
-      if (data.length > 0 && !selectedConvId) {
+      if (data.length > 0 && !selectedConvId && typeof window !== 'undefined' && window.innerWidth >= 768) {
         setSearchParams({ id: data[0].id });
       }
     } catch (err) {

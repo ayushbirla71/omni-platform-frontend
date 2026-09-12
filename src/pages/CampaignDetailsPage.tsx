@@ -31,6 +31,7 @@ import {
 import { campaignsApi } from '../api';
 import type { Campaign, CampaignRecipient, CampaignAnalytics } from '../types';
 import { useToast } from '../context/ToastContext';
+import { useDialog } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -42,6 +43,7 @@ export const CampaignDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { confirm } = useDialog();
 
   const [analytics, setAnalytics] = useState<CampaignAnalytics | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -114,7 +116,13 @@ export const CampaignDetailsPage: React.FC = () => {
 
   const handleSendCampaign = async () => {
     if (!id) return;
-    if (!confirm('Are you sure you want to execute and send this campaign now?')) return;
+    const ok = await confirm({
+      title: 'Execute Broadcast Campaign',
+      message: 'Are you sure you want to execute and send this campaign now to all targeted recipients?',
+      confirmText: 'Send Broadcast',
+      variant: 'primary',
+    });
+    if (!ok) return;
 
     setIsSending(true);
     try {
