@@ -690,10 +690,16 @@ export const CampaignDetailsPage: React.FC = () => {
                       </td>
 
                       {/* Diagnostic Errors */}
-                      <td className="py-3 px-4 max-w-xs">
+                      <td className="py-3 px-4 max-w-sm">
                         {rec.last_error ? (
-                          <div className="text-rose-600 text-[11px] bg-rose-50 p-1.5 rounded border border-rose-100 truncate" title={rec.last_error}>
-                            {rec.last_error}
+                          <div className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 space-y-1">
+                            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                              <span>Delivery Failed</span>
+                            </div>
+                            <p className="text-[11px] leading-snug break-words text-rose-700 dark:text-rose-400 font-mono">
+                              {rec.last_error}
+                            </p>
                           </div>
                         ) : (
                           <span className="text-gray-400 text-[11px]">—</span>

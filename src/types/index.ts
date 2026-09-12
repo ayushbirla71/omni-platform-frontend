@@ -246,6 +246,10 @@ export interface Message {
   content?: Record<string, any>;
   raw?: Record<string, any>;
   status?: MessageStatus;
+  errorCode?: string;
+  errorMessage?: string;
+  error_code?: string;
+  error_message?: string;
   createdAt?: string;
   created_at?: string;
   sentAt?: string;

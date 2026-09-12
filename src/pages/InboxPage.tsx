@@ -375,12 +375,32 @@ export const InboxPage: React.FC = () => {
     });
 
     // 2. Message delivery status changes (sent, delivered, read, failed)
-    const unbindMsgStatus = onRealtimeEvent<{ id: string; status: any }>('message:status', (evt) => {
+    const unbindMsgStatus = onRealtimeEvent<{
+      id?: string;
+      messageId?: string;
+      status: any;
+      errorCode?: string;
+      errorMessage?: string;
+      error_code?: string;
+      error_message?: string;
+    }>('message:status', (evt) => {
       const statusData = evt.data;
-      if (!statusData?.id) return;
+      const targetId = statusData?.id || statusData?.messageId;
+      if (!targetId) return;
 
       setMessages((prev) =>
-        prev.map((m) => (m.id === statusData.id ? { ...m, status: statusData.status } : m))
+        prev.map((m) =>
+          (m.id === targetId || m._id === targetId)
+            ? {
+                ...m,
+                status: statusData.status,
+                errorCode: statusData.errorCode || statusData.error_code || m.errorCode,
+                errorMessage: statusData.errorMessage || statusData.error_message || m.errorMessage,
+                error_code: statusData.errorCode || statusData.error_code || m.error_code,
+                error_message: statusData.errorMessage || statusData.error_message || m.error_message,
+              }
+            : m
+        )
       );
     });
 
@@ -1017,17 +1037,32 @@ export const InboxPage: React.FC = () => {
                             {isOutbound && (
                               <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
                                 {msg.status === 'failed' ? (
-                                  <AlertCircle className="w-3 h-3 text-red-500" />
+                                  <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
                                 ) : msg.status === 'read' ? (
-                                  <CheckCheck className="w-3 h-3 text-sky-500" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
                                 ) : msg.status === 'delivered' ? (
-                                  <CheckCheck className="w-3 h-3 text-emerald-500" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
                                 ) : (
-                                  <Check className="w-3 h-3 text-gray-400" />
+                                  <Check className="w-3.5 h-3.5 text-gray-400" />
                                 )}
                               </span>
                             )}
                           </div>
+
+                          {/* Failure Error Callout Banner for Templates */}
+                          {msg.status === 'failed' && (
+                            <div className="mt-1.5 flex items-start gap-2 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-400 w-full shadow-xs">
+                              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-[11px] uppercase tracking-wide text-rose-800 dark:text-rose-300">
+                                  Delivery Failed {msg.errorCode || msg.error_code ? `(Error #${msg.errorCode || msg.error_code})` : ''}
+                                </p>
+                                <p className="text-xs text-rose-700 dark:text-rose-400 leading-snug mt-0.5 break-words">
+                                  {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div
@@ -1226,16 +1261,31 @@ export const InboxPage: React.FC = () => {
                             {isOutbound && (
                               <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
                                 {msg.status === 'failed' ? (
-                                  <AlertCircle className="w-3 h-3 text-red-300" />
+                                  <AlertCircle className="w-3.5 h-3.5 text-rose-300" />
                                 ) : msg.status === 'read' ? (
-                                  <CheckCheck className="w-3 h-3 text-sky-200" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-sky-200" />
                                 ) : msg.status === 'delivered' ? (
-                                  <CheckCheck className="w-3 h-3 text-primary-200" />
+                                  <CheckCheck className="w-3.5 h-3.5 text-primary-200" />
                                 ) : (
-                                  <Check className="w-3 h-3 text-primary-200" />
+                                  <Check className="w-3.5 h-3.5 text-primary-200" />
                                 )}
                               </span>
                             )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Outbound Failure Error Callout Banner for Regular Messages */}
+                      {isOutbound && !isTemplate && msg.status === 'failed' && (
+                        <div className="mt-1.5 flex items-start gap-2 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-400 max-w-md shadow-xs">
+                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-[11px] uppercase tracking-wide text-rose-800 dark:text-rose-300">
+                              Delivery Failed {msg.errorCode || msg.error_code ? `(Error #${msg.errorCode || msg.error_code})` : ''}
+                            </p>
+                            <p className="text-xs text-rose-700 dark:text-rose-400 leading-snug mt-0.5 break-words">
+                              {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
+                            </p>
                           </div>
                         </div>
                       )}
