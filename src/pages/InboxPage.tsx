@@ -1035,29 +1035,72 @@ export const InboxPage: React.FC = () => {
                           >
                             <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
                             {isOutbound && (
-                              <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
+                              <div className="relative inline-flex items-center group">
                                 {msg.status === 'failed' ? (
-                                  <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                                  <div className="relative flex items-center cursor-pointer">
+                                    <div className="flex items-center gap-1 text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-950 dark:text-red-300 px-1.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 transition-colors shadow-2xs">
+                                      <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0 animate-pulse" />
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Failed</span>
+                                    </div>
+                                    {/* Hover Tooltip Popover */}
+                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
+                                      <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-gray-800">
+                                        <div className="flex items-center gap-1.5 text-red-400 font-bold text-xs">
+                                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                          <span>Delivery Failed</span>
+                                        </div>
+                                        {(msg.errorCode || msg.error_code) && (
+                                          <span className="px-1.5 py-0.5 bg-red-900 text-red-200 border border-red-700 rounded text-[10px] font-mono font-bold">
+                                            Error #{msg.errorCode || msg.error_code}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words">
+                                        {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
+                                      </p>
+                                      <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900">
+                                        <span>Status</span>
+                                        <span className="text-red-400 font-bold">Undelivered</span>
+                                      </div>
+                                      {/* Arrow pointer */}
+                                      <div className="absolute top-full right-4 -mt-1 border-4 border-transparent border-t-gray-950" />
+                                    </div>
+                                  </div>
                                 ) : msg.status === 'read' ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
+                                  <span title="Read by customer" className="flex items-center ml-0.5">
+                                    <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
+                                  </span>
                                 ) : msg.status === 'delivered' ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
+                                  <span title="Delivered to device" className="flex items-center ml-0.5">
+                                    <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
+                                  </span>
                                 ) : (
-                                  <Check className="w-3.5 h-3.5 text-gray-400" />
+                                  <span title="Sent" className="flex items-center ml-0.5">
+                                    <Check className="w-3.5 h-3.5 text-gray-400" />
+                                  </span>
                                 )}
-                              </span>
+                              </div>
                             )}
                           </div>
 
                           {/* Failure Error Callout Banner for Templates */}
                           {msg.status === 'failed' && (
-                            <div className="mt-1.5 flex items-start gap-2 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-400 w-full shadow-xs">
-                              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-bold text-[11px] uppercase tracking-wide text-rose-800 dark:text-rose-300">
-                                  Delivery Failed {msg.errorCode || msg.error_code ? `(Error #${msg.errorCode || msg.error_code})` : ''}
-                                </p>
-                                <p className="text-xs text-rose-700 dark:text-rose-400 leading-snug mt-0.5 break-words">
+                            <div className="mt-2 flex items-start gap-2.5 p-3 bg-red-50 dark:bg-red-950/90 border-2 border-red-400/80 dark:border-red-600 rounded-xl text-xs w-full shadow-sm">
+                              <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 mt-0.5">
+                                <AlertCircle className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                  <p className="font-extrabold text-xs text-red-900 dark:text-red-100 tracking-tight">
+                                    Delivery Failed
+                                  </p>
+                                  {(msg.errorCode || msg.error_code) && (
+                                    <span className="px-1.5 py-0.5 rounded bg-red-200/80 dark:bg-red-900 text-red-900 dark:text-red-100 font-mono font-bold text-[10px] border border-red-300 dark:border-red-700">
+                                      Error #{msg.errorCode || msg.error_code}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-red-950 dark:text-red-50 font-semibold leading-relaxed break-words">
                                   {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
                                 </p>
                               </div>
@@ -1259,17 +1302,51 @@ export const InboxPage: React.FC = () => {
                           >
                             <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
                             {isOutbound && (
-                              <span className="flex items-center ml-0.5" title={`Status: ${msg.status || 'sent'}`}>
+                              <div className="relative inline-flex items-center group">
                                 {msg.status === 'failed' ? (
-                                  <AlertCircle className="w-3.5 h-3.5 text-rose-300" />
+                                  <div className="relative flex items-center cursor-pointer">
+                                    <div className="flex items-center gap-1 text-white bg-red-600 hover:bg-red-700 px-1.5 py-0.5 rounded-full shadow-xs transition-colors">
+                                      <AlertCircle className="w-3 h-3 text-white shrink-0 animate-pulse" />
+                                      <span className="text-[9px] font-bold uppercase tracking-wider">Failed</span>
+                                    </div>
+                                    {/* Hover Tooltip Popover */}
+                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
+                                      <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-gray-800">
+                                        <div className="flex items-center gap-1.5 text-red-400 font-bold text-xs">
+                                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                          <span>Delivery Failed</span>
+                                        </div>
+                                        {(msg.errorCode || msg.error_code) && (
+                                          <span className="px-1.5 py-0.5 bg-red-900 text-red-200 border border-red-700 rounded text-[10px] font-mono font-bold">
+                                            Error #{msg.errorCode || msg.error_code}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words">
+                                        {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
+                                      </p>
+                                      <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900">
+                                        <span>Status</span>
+                                        <span className="text-red-400 font-bold">Undelivered</span>
+                                      </div>
+                                      {/* Arrow pointer */}
+                                      <div className="absolute top-full right-4 -mt-1 border-4 border-transparent border-t-gray-950" />
+                                    </div>
+                                  </div>
                                 ) : msg.status === 'read' ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-sky-200" />
+                                  <span title="Read by customer" className="flex items-center ml-0.5">
+                                    <CheckCheck className="w-3.5 h-3.5 text-sky-200" />
+                                  </span>
                                 ) : msg.status === 'delivered' ? (
-                                  <CheckCheck className="w-3.5 h-3.5 text-primary-200" />
+                                  <span title="Delivered to device" className="flex items-center ml-0.5">
+                                    <CheckCheck className="w-3.5 h-3.5 text-primary-200" />
+                                  </span>
                                 ) : (
-                                  <Check className="w-3.5 h-3.5 text-primary-200" />
+                                  <span title="Sent" className="flex items-center ml-0.5">
+                                    <Check className="w-3.5 h-3.5 text-primary-200" />
+                                  </span>
                                 )}
-                              </span>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1277,13 +1354,22 @@ export const InboxPage: React.FC = () => {
 
                       {/* Outbound Failure Error Callout Banner for Regular Messages */}
                       {isOutbound && !isTemplate && msg.status === 'failed' && (
-                        <div className="mt-1.5 flex items-start gap-2 p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl text-xs text-rose-700 dark:text-rose-400 max-w-md shadow-xs">
-                          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-[11px] uppercase tracking-wide text-rose-800 dark:text-rose-300">
-                              Delivery Failed {msg.errorCode || msg.error_code ? `(Error #${msg.errorCode || msg.error_code})` : ''}
-                            </p>
-                            <p className="text-xs text-rose-700 dark:text-rose-400 leading-snug mt-0.5 break-words">
+                        <div className="mt-2 flex items-start gap-2.5 p-3 bg-red-50 dark:bg-red-950/90 border-2 border-red-400/80 dark:border-red-600 rounded-xl text-xs max-w-md shadow-sm">
+                          <div className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <AlertCircle className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                              <p className="font-extrabold text-xs text-red-900 dark:text-red-100 tracking-tight">
+                                Delivery Failed
+                              </p>
+                              {(msg.errorCode || msg.error_code) && (
+                                <span className="px-1.5 py-0.5 rounded bg-red-200/80 dark:bg-red-900 text-red-900 dark:text-red-100 font-mono font-bold text-[10px] border border-red-300 dark:border-red-700">
+                                  Error #{msg.errorCode || msg.error_code}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-red-950 dark:text-red-50 font-semibold leading-relaxed break-words">
                               {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
                             </p>
                           </div>

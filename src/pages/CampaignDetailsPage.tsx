@@ -654,25 +654,54 @@ export const CampaignDetailsPage: React.FC = () => {
 
                       {/* Delivery Status */}
                       <td className="py-3 px-4">
-                        <Badge
-                          variant={
-                            rec.status === 'completed'
-                              ? 'success'
-                              : rec.status === 'sent'
-                              ? 'primary'
-                              : rec.status === 'pending'
-                              ? 'warning'
-                              : 'danger'
-                          }
-                          size="sm"
-                          className="capitalize font-semibold"
-                        >
-                          {rec.status === 'pending' && <Clock className="w-3 h-3 animate-pulse" />}
-                          {rec.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
-                          {rec.status === 'sent' && <Send className="w-3 h-3" />}
-                          {rec.status === 'failed' && <XCircle className="w-3 h-3" />}
-                          {rec.status}
-                        </Badge>
+                        {rec.status === 'failed' ? (
+                          <div className="relative inline-flex items-center group">
+                            <Badge
+                              variant="danger"
+                              size="sm"
+                              className="capitalize font-bold flex items-center gap-1 cursor-pointer bg-red-600 text-white hover:bg-red-700 shadow-2xs transition-colors"
+                              title={rec.last_error ? `Delivery Failed: ${rec.last_error}` : 'Delivery Failed'}
+                            >
+                              <XCircle className="w-3 h-3 text-white shrink-0" />
+                              <span>failed</span>
+                            </Badge>
+                            {/* Hover Tooltip Popover */}
+                            <div className="absolute bottom-full left-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
+                              <div className="flex items-center gap-1.5 pb-1.5 border-b border-gray-800 text-red-400 font-bold text-xs">
+                                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                <span>Delivery Failure Reason</span>
+                              </div>
+                              <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words font-mono">
+                                {rec.last_error || 'Message delivery failed. Please check WhatsApp channel connection.'}
+                              </p>
+                              <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900 font-sans">
+                                <span>WhatsApp Campaign</span>
+                                <span className="text-red-400 font-bold">Failed</span>
+                              </div>
+                              {/* Arrow pointer */}
+                              <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-gray-950" />
+                            </div>
+                          </div>
+                        ) : (
+                          <Badge
+                            variant={
+                              rec.status === 'completed'
+                                ? 'success'
+                                : rec.status === 'sent'
+                                ? 'primary'
+                                : rec.status === 'pending'
+                                ? 'warning'
+                                : 'danger'
+                            }
+                            size="sm"
+                            className="capitalize font-semibold"
+                          >
+                            {rec.status === 'pending' && <Clock className="w-3 h-3 animate-pulse" />}
+                            {rec.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
+                            {rec.status === 'sent' && <Send className="w-3 h-3" />}
+                            {rec.status}
+                          </Badge>
+                        )}
                       </td>
 
                       {/* Drip Step */}
@@ -692,12 +721,12 @@ export const CampaignDetailsPage: React.FC = () => {
                       {/* Diagnostic Errors */}
                       <td className="py-3 px-4 max-w-sm">
                         {rec.last_error ? (
-                          <div className="text-rose-700 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900/60 space-y-1">
-                            <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-800 dark:text-rose-300">
-                              <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                          <div className="text-red-950 dark:text-red-50 bg-red-50 dark:bg-red-950/90 p-2.5 rounded-xl border-2 border-red-400/80 dark:border-red-600 space-y-1 shadow-2xs">
+                            <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-red-900 dark:text-red-100">
+                              <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
                               <span>Delivery Failed</span>
                             </div>
-                            <p className="text-[11px] leading-snug break-words text-rose-700 dark:text-rose-400 font-mono">
+                            <p className="text-xs leading-relaxed break-words text-red-950 dark:text-red-50 font-mono font-semibold">
                               {rec.last_error}
                             </p>
                           </div>
