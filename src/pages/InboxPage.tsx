@@ -15,35 +15,22 @@ import {
   Phone,
   FileText,
   Download,
-  Image as ImageIcon,
   Music,
-  Film,
   ExternalLink,
   ShoppingBag,
-  ShoppingCart,
-  Package,
   X,
   Sparkles,
   Brain,
   Wand2,
-  Bot,
   Zap,
   CheckCircle2,
   ListChecks,
-  ArrowRight,
   CornerDownLeft,
-  Flame,
-  ShieldAlert,
   Copy,
-  RotateCcw,
-  Wifi,
-  WifiOff,
   Paperclip,
   Clock,
   AlertTriangle,
   FileCheck,
-  HelpCircle,
-  Eye,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -57,7 +44,6 @@ import type {
   ConversationSummary,
   IntentClassification,
   WhatsAppTemplate,
-  TemplateComponent,
 } from '../types';
 import { useToast } from '../context/ToastContext';
 import { Badge } from '../components/common/Badge';
@@ -144,7 +130,33 @@ export const InboxPage: React.FC = () => {
   const [newDealStage, setNewDealStage] = useState('Lead');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
   const { showToast } = useToast();
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+    touchStartYRef.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+    const deltaY = Math.abs(e.changedTouches[0].clientY - touchStartYRef.current);
+
+    // Swipe right from left edge (> 70px horizontal swipe, started within 90px of left edge, minimal vertical movement)
+    if (touchStartXRef.current < 90 && deltaX > 70 && deltaY < 60) {
+      handleBackToList();
+    }
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+  };
+
+  const handleBackToList = () => {
+    setSearchParams({});
+    setActiveConversation(null);
+    setIsMobileDrawerOpen(false);
+  };
 
   const getMediaUrl = (msg: Message): string | null => {
     const key = msg.mediaStorageKey || msg.content?.mediaStorageKey;
@@ -759,10 +771,543 @@ export const InboxPage: React.FC = () => {
     return matchesSearch && matchesChannel;
   });
 
+  const renderRightPaneContent = () => {
+    if (!activeConversation) return null;
+
+    return (
+      <div className="space-y-4">
+        {/* Dual-Tab Navigation: Profile & CRM vs AI Copilot */}
+        <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl border border-gray-200/60">
+          <button
+            onClick={() => setRightPaneTab('crm')}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
+              rightPaneTab === 'crm'
+                ? 'bg-white text-gray-900 shadow-2xs'
+                : 'text-gray-500 hover:text-gray-900'
+            )}
+          >
+            <User className="w-3.5 h-3.5 text-primary-600" />
+            <span>CRM & Deals</span>
+          </button>
+          <button
+            onClick={() => setRightPaneTab('copilot')}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
+              rightPaneTab === 'copilot'
+                ? 'bg-white text-violet-700 shadow-2xs font-bold'
+                : 'text-gray-500 hover:text-violet-700'
+            )}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+            <span>AI Copilot</span>
+          </button>
+        </div>
+
+        {rightPaneTab === 'crm' ? (
+          <div className="space-y-6">
+            {/* Contact Details */}
+            <div>
+              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
+                Contact Details
+              </h4>
+              <div className="p-4 rounded-xl bg-slate-50 border border-gray-100 space-y-2">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <span className="text-xs font-semibold text-gray-900">
+                    {contact?.name || activeConversation.contactName || 'No Name Set'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <Radio className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="capitalize">{activeConversation.channelType}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <Phone className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{contact?.externalId || activeConversation.contactExternalId}</span>
+                </div>
+                {contact?.attributes?.email && (
+                  <div className="text-xs text-gray-600 truncate">
+                    ✉️ {contact.attributes.email}
+                  </div>
+                )}
+                {contact?.attributes?.tags && contact.attributes.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {contact.attributes.tags.map((t: string) => (
+                      <Badge key={t} variant="secondary" size="sm">
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* CRM Deals associated with this contact */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                  Deals ({deals.length})
+                </h4>
+                <button
+                  onClick={() => setIsDealModalOpen(true)}
+                  className="text-xs text-primary-600 hover:text-primary-700 font-semibold"
+                >
+                  + Add
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {deals.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No deals attached to this contact.</p>
+                ) : (
+                  deals.map((deal) => (
+                    <div key={deal.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-900">{deal.title}</span>
+                        <Badge variant="warning" size="sm">
+                          {deal.stage}
+                        </Badge>
+                      </div>
+                      <p className="text-xs font-semibold text-primary-700">
+                        ${((Number(deal.value) || 0) / 100).toLocaleString('en-US')}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Customer Orders */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                  Orders ({orders.length})
+                </h4>
+                <Link
+                  to="/orders"
+                  className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                >
+                  <span>View All</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                {orders.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">No orders found for this contact.</p>
+                ) : (
+                  orders.slice(0, 5).map((ord) => (
+                    <div key={ord.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-900">{ord.orderNumber}</span>
+                        <Badge
+                          variant={
+                            ord.status === 'completed'
+                              ? 'success'
+                              : ord.status === 'cancelled' || ord.status === 'refunded'
+                              ? 'danger'
+                              : ord.status === 'paid' || ord.status === 'processing'
+                              ? 'purple'
+                              : 'warning'
+                          }
+                          size="sm"
+                        >
+                          {ord.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">{ord.items?.length || 0} items</span>
+                        <span className="font-bold text-emerald-700">
+                          {ord.currency} {(ord.totalAmount ?? ord.total_amount ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-0.5 text-[10px] text-gray-400">
+                        <span>
+                          Payment:{' '}
+                          <strong className={(ord.paymentStatus || ord.payment_status) === 'paid' ? 'text-emerald-600' : 'text-amber-600'}>
+                            {ord.paymentStatus || ord.payment_status}
+                          </strong>
+                        </span>
+                        <span>
+                          {ord.createdAt || ord.created_at ? new Date(ord.createdAt || ord.created_at || '').toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* AI Copilot Suite */
+          <div className="space-y-4">
+            {/* Copilot Sub-Navigation */}
+            <div className="flex items-center gap-1 p-0.5 bg-violet-50/80 rounded-xl border border-violet-200/60">
+              <button
+                type="button"
+                onClick={() => setCopilotTab('summary')}
+                className={cn(
+                  'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
+                  copilotTab === 'summary' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
+                )}
+              >
+                Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCopilotTab('rephrase');
+                  if (!rephraseInput && messageText) {
+                    setRephraseInput(messageText);
+                  }
+                }}
+                className={cn(
+                  'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
+                  copilotTab === 'rephrase' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
+                )}
+              >
+                Rephrase
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopilotTab('classify')}
+                className={cn(
+                  'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
+                  copilotTab === 'classify' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
+                )}
+              >
+                Classifier
+              </button>
+            </div>
+
+            {/* 1. Summary Sub-Tool */}
+            {copilotTab === 'summary' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <ListChecks className="w-3.5 h-3.5 text-violet-600" />
+                    Thread Summary
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateSummary}
+                    isLoading={isLoadingSummary}
+                    icon={<Sparkles className="w-3 h-3 text-violet-600" />}
+                  >
+                    {conversationSummary ? 'Regenerate' : 'Generate'}
+                  </Button>
+                </div>
+
+                {isLoadingSummary ? (
+                  <div className="p-6 rounded-2xl bg-violet-50/50 border border-violet-100 text-center space-y-2">
+                    <Spinner size="sm" />
+                    <p className="text-xs text-violet-700 font-medium">Analyzing conversation context & sentiment...</p>
+                  </div>
+                ) : conversationSummary ? (
+                  <div className="space-y-3 animate-in fade-in duration-200">
+                    {/* Sentiment & Intent Badges */}
+                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-violet-50/70 border border-violet-100">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-bold text-violet-900">Sentiment:</span>
+                        <Badge
+                          variant={
+                            conversationSummary.sentiment === 'positive'
+                              ? 'success'
+                              : conversationSummary.sentiment === 'negative'
+                              ? 'danger'
+                              : conversationSummary.sentiment === 'mixed'
+                              ? 'warning'
+                              : 'secondary'
+                          }
+                          size="sm"
+                        >
+                          {conversationSummary.sentiment || 'neutral'}
+                        </Badge>
+                      </div>
+                      {(conversationSummary.mainIntent || conversationSummary.intent) && (
+                        <div className="flex items-center gap-1">
+                          <Badge variant="purple" size="sm" className="font-mono">
+                            {conversationSummary.mainIntent || conversationSummary.intent}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary Text */}
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200/70 text-xs text-gray-800 leading-relaxed">
+                      <p className="font-medium">{conversationSummary.summary}</p>
+                    </div>
+
+                    {/* Key Bullets */}
+                    {conversationSummary.keyPoints && conversationSummary.keyPoints.length > 0 && (
+                      <div className="space-y-1.5">
+                        <h5 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
+                          Key Details
+                        </h5>
+                        <ul className="space-y-1">
+                          {conversationSummary.keyPoints.map((point, idx) => (
+                            <li key={idx} className="text-xs text-gray-600 flex items-start gap-1.5">
+                              <span className="text-violet-500 font-bold">•</span>
+                              <span>{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Action Items / Suggested Action */}
+                    {((conversationSummary.actionItems && conversationSummary.actionItems.length > 0) || conversationSummary.suggestedAction) && (
+                      <div className="space-y-1.5">
+                        <h5 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Next Action Items
+                        </h5>
+                        <div className="space-y-1">
+                          {(conversationSummary.actionItems || (conversationSummary.suggestedAction ? [conversationSummary.suggestedAction] : [])).map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="p-2 rounded-lg bg-emerald-50/60 border border-emerald-100 flex items-center justify-between gap-2 text-xs text-emerald-950"
+                            >
+                              <span className="truncate">{item}</span>
+                              <button
+                                type="button"
+                                onClick={() => setMessageText(item)}
+                                className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 shrink-0 hover:underline"
+                                title="Insert item into composer"
+                              >
+                                Use
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl bg-gray-50 border border-dashed border-gray-200 text-center space-y-2">
+                    <Brain className="w-8 h-8 mx-auto text-violet-400 opacity-60" />
+                    <p className="text-xs text-gray-600 font-medium">No summary generated yet.</p>
+                    <p className="text-[11px] text-gray-400">Click the button above to analyze this chat.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. Rephrase Sub-Tool */}
+            {copilotTab === 'rephrase' && (
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-gray-800">Draft Message</label>
+                    {messageText && (
+                      <button
+                        type="button"
+                        onClick={() => setRephraseInput(messageText)}
+                        className="text-[10px] text-violet-600 hover:text-violet-900 font-semibold"
+                      >
+                        Copy from Composer
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={rephraseInput}
+                    onChange={(e) => setRephraseInput(e.target.value)}
+                    placeholder="Type or paste your draft reply here..."
+                    className="w-full text-xs rounded-xl border border-gray-200 p-2.5 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Tone Selector */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Select Tone Persona
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'professional', label: '👔 Professional' },
+                      { id: 'friendly', label: '😊 Friendly' },
+                      { id: 'concise', label: '⚡ Concise' },
+                      { id: 'bullet_points', label: '📋 Bullet Points' },
+                      { id: 'sales_pitch', label: '🎯 Sales Pitch' },
+                    ].map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setRephraseTone(t.id as any)}
+                        className={cn(
+                          'py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all border text-left truncate',
+                          rephraseTone === t.id
+                            ? 'bg-violet-600 text-white border-violet-600 shadow-2xs'
+                            : 'bg-white text-gray-700 border-gray-200 hover:bg-violet-50 hover:border-violet-200'
+                        )}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full bg-violet-600 hover:bg-violet-700"
+                  onClick={handleRephraseMessage}
+                  isLoading={isRephrasing}
+                  icon={<Wand2 className="w-3.5 h-3.5" />}
+                >
+                  Rephrase with AI
+                </Button>
+
+                {/* Rephrased Result Card */}
+                {rephraseResult && (
+                  <div className="p-3 bg-violet-50/80 rounded-xl border border-violet-200 space-y-2 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-violet-900 uppercase tracking-wider">
+                        Rephrased Output
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(rephraseResult);
+                            showToast('Copied to clipboard', 'success');
+                          }}
+                          className="p-1 rounded text-violet-600 hover:text-violet-900 hover:bg-violet-100"
+                          title="Copy text"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed bg-white p-2.5 rounded-lg border border-violet-100">
+                      {rephraseResult}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full bg-white hover:bg-violet-50 text-violet-700 border-violet-300 font-bold"
+                      onClick={() => {
+                        setMessageText(rephraseResult);
+                        showToast('Inserted into composer', 'success');
+                      }}
+                      icon={<CornerDownLeft className="w-3.5 h-3.5" />}
+                    >
+                      Insert into Composer
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 3. Intent & Urgency Classifier Sub-Tool */}
+            {copilotTab === 'classify' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Customer Message to Classify
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={classifyText}
+                    onChange={(e) => setClassifyText(e.target.value)}
+                    placeholder="Paste incoming message to detect intent and urgency..."
+                    className="w-full text-xs rounded-xl border border-gray-200 p-2.5 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full bg-fuchsia-600 hover:bg-fuchsia-700"
+                  onClick={() => handleClassifyIntent()}
+                  isLoading={isClassifying}
+                  icon={<Zap className="w-3.5 h-3.5" />}
+                >
+                  Classify Intent & Urgency
+                </Button>
+
+                {intentClassification && (
+                  <div className="p-3 bg-fuchsia-50/70 rounded-xl border border-fuchsia-200 space-y-2.5 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-fuchsia-900 uppercase tracking-wider">
+                        Classification Result
+                      </span>
+                      <Badge
+                        variant={
+                          intentClassification.urgency === 'critical'
+                            ? 'danger'
+                            : intentClassification.urgency === 'high'
+                            ? 'warning'
+                            : 'secondary'
+                        }
+                        size="sm"
+                      >
+                        Urgency: {intentClassification.urgency || 'medium'}
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-1 bg-white p-2.5 rounded-lg border border-fuchsia-100">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Detected Intent:</span>
+                        <span className="font-mono font-bold text-fuchsia-900">
+                          {intentClassification.intent}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-gray-500">Sentiment:</span>
+                        <Badge variant="secondary" size="sm">
+                          {intentClassification.sentiment || 'neutral'}
+                        </Badge>
+                      </div>
+                      {intentClassification.confidence ? (
+                        <div className="pt-1">
+                          <div className="flex items-center justify-between text-[10px] text-gray-500 mb-0.5">
+                            <span>Confidence:</span>
+                            <span className="font-mono font-bold">
+                              {Math.round(intentClassification.confidence * 100)}%
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-fuchsia-600 rounded-full"
+                              style={{ width: `${Math.round(intentClassification.confidence * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {intentClassification.entities && Object.keys(intentClassification.entities).length > 0 && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                          Extracted Entities:
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(intentClassification.entities).map(([k, v]) => (
+                            <span key={k} className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-fuchsia-200 font-mono text-fuchsia-950">
+                              {k}: {String(v)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="h-[calc(100vh-8rem)] bg-white rounded-2xl border border-gray-200/80 shadow-sm flex overflow-hidden">
+    <div className="h-[calc(100dvh-5.2rem)] md:h-[calc(100vh-8rem)] bg-white rounded-none sm:rounded-2xl border border-gray-200/80 shadow-sm flex overflow-hidden relative">
       {/* ==================== LEFT PANE: Conversations List ==================== */}
-      <div className="w-80 lg:w-96 border-r border-gray-200 flex flex-col shrink-0 bg-slate-50/50">
+      <div className={cn('border-r border-gray-200 flex flex-col shrink-0 bg-slate-50/50 transition-all duration-200', selectedConvId ? 'hidden md:flex md:w-80 lg:w-96' : 'w-full md:w-80 lg:w-96 flex')}>
         {/* Header & Filters */}
         <div className="p-4 border-b border-gray-200 space-y-3 bg-white">
           <div className="flex items-center justify-between">
@@ -926,50 +1471,89 @@ export const InboxPage: React.FC = () => {
       </div>
 
       {/* ==================== MIDDLE PANE: Active Chat Messages ==================== */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50/30">
+      <div
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className={cn(
+          'flex-1 flex flex-col min-w-0 bg-slate-50/30 transition-all duration-200',
+          selectedConvId ? 'flex w-full' : 'hidden md:flex'
+        )}
+      >
         {activeConversation ? (
           <>
             {/* Chat Header */}
-            <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs uppercase">
+            <div className="px-3.5 sm:px-6 py-2.5 sm:py-4 bg-white border-b border-gray-200 flex items-center justify-between sticky top-0 z-10 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                {/* WhatsApp Mobile Back Button */}
+                <button
+                  type="button"
+                  onClick={handleBackToList}
+                  className="md:hidden -ml-1.5 p-1.5 rounded-full text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 transition-colors flex items-center justify-center shrink-0"
+                  title="Back to conversation list"
+                  aria-label="Back to conversations"
+                >
+                  <ChevronLeft className="w-6 h-6 text-gray-800" />
+                </button>
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs uppercase shrink-0">
                   {activeConversation.contactName ? activeConversation.contactName.substring(0, 2) : 'CT'}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-gray-900">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
                       {activeConversation.contactName || activeConversation.contactExternalId}
                     </h3>
-                    <Badge variant={activeConversation.channelType === 'whatsapp' ? 'success' : 'primary'} size="sm">
+                    <Badge variant={activeConversation.channelType === 'whatsapp' ? 'success' : 'primary'} size="sm" className="text-[10px] px-1.5 py-0 shrink-0">
                       {activeConversation.channelType}
                     </Badge>
                   </div>
-                  <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
-                    <Phone className="w-3 h-3 text-gray-400" />
-                    {activeConversation.contactExternalId || 'No external phone'}
+                  <p className="text-[10px] sm:text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5 truncate">
+                    <Phone className="w-3 h-3 text-gray-400 shrink-0" />
+                    <span className="truncate">{activeConversation.contactExternalId || 'No external phone'}</span>
+                    {activeConversation.channelType === 'whatsapp' && sessionSecondsLeft !== null && sessionSecondsLeft > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80 ml-1 shrink-0" title="WhatsApp 24-hour service window remaining">
+                        <Clock className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>{formatCountdown(sessionSecondsLeft)}</span>
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setRightPaneTab(rightPaneTab === 'copilot' ? 'crm' : 'copilot')}
+                  onClick={() => {
+                    setRightPaneTab('copilot');
+                    setIsMobileDrawerOpen(true);
+                  }}
                   className={cn(
-                    'px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs border',
-                    rightPaneTab === 'copilot'
+                    'px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs border',
+                    rightPaneTab === 'copilot' && isMobileDrawerOpen
                       ? 'bg-violet-600 text-white border-violet-600 shadow-violet-500/20'
                       : 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50'
                   )}
-                  title="Toggle AI Copilot Drawer"
+                  title="Toggle AI Copilot"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>AI Copilot</span>
+                  <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                  <span className="hidden sm:inline">AI Copilot</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRightPaneTab('crm');
+                    setIsMobileDrawerOpen(true);
+                  }}
+                  className="xl:hidden px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 flex items-center gap-1 shadow-2xs"
+                  title="Contact Details & CRM"
+                >
+                  <User className="w-3.5 h-3.5 text-primary-600" />
+                  <span className="hidden sm:inline">Details</span>
                 </button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setIsDealModalOpen(true)}
+                  className="hidden sm:flex"
                   icon={<Plus className="w-3.5 h-3.5 text-primary-600" />}
                 >
                   Add Deal
@@ -1494,530 +2078,46 @@ export const InboxPage: React.FC = () => {
       {/* ==================== RIGHT PANE: Contact Details, CRM Deals & AI Copilot ==================== */}
       {activeConversation && (
         <div className="w-80 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden xl:block space-y-4">
-          {/* Dual-Tab Navigation: Profile & CRM vs AI Copilot */}
-          <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl border border-gray-200/60">
-            <button
-              onClick={() => setRightPaneTab('crm')}
-              className={cn(
-                'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
-                rightPaneTab === 'crm'
-                  ? 'bg-white text-gray-900 shadow-2xs'
-                  : 'text-gray-500 hover:text-gray-900'
-              )}
-            >
-              <User className="w-3.5 h-3.5 text-primary-600" />
-              <span>CRM & Deals</span>
-            </button>
-            <button
-              onClick={() => setRightPaneTab('copilot')}
-              className={cn(
-                'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
-                rightPaneTab === 'copilot'
-                  ? 'bg-white text-violet-700 shadow-2xs font-bold'
-                  : 'text-gray-500 hover:text-violet-700'
-              )}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-violet-600" />
-              <span>AI Copilot</span>
-            </button>
+          {renderRightPaneContent()}
+        </div>
+      )}
+
+      {/* ==================== MOBILE SLIDE-OVER DRAWER (CRM & AI Copilot) ==================== */}
+      {activeConversation && isMobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 xl:hidden">
+          <div
+            className="fixed inset-0 bg-gray-900/50 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileDrawerOpen(false)}
+          />
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col">
+              <div className="px-4 py-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  {rightPaneTab === 'copilot' ? (
+                    <>
+                      <Sparkles className="w-4 h-4 text-violet-400" />
+                      <span className="text-sm font-bold">AI Copilot Suite</span>
+                    </>
+                  ) : (
+                    <>
+                      <User className="w-4 h-4 text-primary-400" />
+                      <span className="text-sm font-bold">Contact & CRM Details</span>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDrawerOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {renderRightPaneContent()}
+              </div>
+            </div>
           </div>
-
-          {rightPaneTab === 'crm' ? (
-            <div className="space-y-6">
-              {/* Contact Details */}
-              <div>
-                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-                  Contact Details
-                </h4>
-                <div className="p-4 rounded-xl bg-slate-50 border border-gray-100 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-900">
-                      {contact?.name || activeConversation.contactName || 'No Name Set'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <Radio className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="capitalize">{activeConversation.channelType}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
-                    <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{contact?.externalId || activeConversation.contactExternalId}</span>
-                  </div>
-                  {contact?.attributes?.email && (
-                    <div className="text-xs text-gray-600 truncate">
-                      ✉️ {contact.attributes.email}
-                    </div>
-                  )}
-                  {contact?.attributes?.tags && contact.attributes.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {contact.attributes.tags.map((t: string) => (
-                        <Badge key={t} variant="secondary" size="sm">
-                          {t}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* CRM Deals associated with this contact */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                    Deals ({deals.length})
-                  </h4>
-                  <button
-                    onClick={() => setIsDealModalOpen(true)}
-                    className="text-xs text-primary-600 hover:text-primary-700 font-semibold"
-                  >
-                    + Add
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  {deals.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">No deals attached to this contact.</p>
-                  ) : (
-                    deals.map((deal) => (
-                      <div key={deal.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-gray-900">{deal.title}</span>
-                          <Badge variant="warning" size="sm">
-                            {deal.stage}
-                          </Badge>
-                        </div>
-                        <p className="text-xs font-semibold text-primary-700">
-                          ${((Number(deal.value) || 0) / 100).toLocaleString('en-US')}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Customer Orders */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
-                    Orders ({orders.length})
-                  </h4>
-                  <Link
-                    to="/orders"
-                    className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
-                  >
-                    <span>View All</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </Link>
-                </div>
-
-                <div className="space-y-2">
-                  {orders.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">No orders found for this contact.</p>
-                  ) : (
-                    orders.slice(0, 5).map((ord) => (
-                      <div key={ord.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50/50 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-gray-900">{ord.orderNumber}</span>
-                          <Badge
-                            variant={
-                              ord.status === 'completed'
-                                ? 'success'
-                                : ord.status === 'cancelled' || ord.status === 'refunded'
-                                ? 'danger'
-                                : ord.status === 'paid' || ord.status === 'processing'
-                                ? 'purple'
-                                : 'warning'
-                            }
-                            size="sm"
-                          >
-                            {ord.status}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">{ord.items?.length || 0} items</span>
-                          <span className="font-bold text-emerald-700">
-                            {ord.currency} {(ord.totalAmount ?? ord.total_amount ?? 0).toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between pt-0.5 text-[10px] text-gray-400">
-                          <span>
-                            Payment:{' '}
-                            <strong className={(ord.paymentStatus || ord.payment_status) === 'paid' ? 'text-emerald-600' : 'text-amber-600'}>
-                              {ord.paymentStatus || ord.payment_status}
-                            </strong>
-                          </span>
-                          <span>
-                            {ord.createdAt || ord.created_at ? new Date(ord.createdAt || ord.created_at || '').toLocaleDateString() : ''}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* AI Copilot Suite */
-            <div className="space-y-4">
-              {/* Copilot Sub-Navigation */}
-              <div className="flex items-center gap-1 p-0.5 bg-violet-50/80 rounded-xl border border-violet-200/60">
-                <button
-                  type="button"
-                  onClick={() => setCopilotTab('summary')}
-                  className={cn(
-                    'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
-                    copilotTab === 'summary' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
-                  )}
-                >
-                  Summary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCopilotTab('rephrase');
-                    if (!rephraseInput && messageText) {
-                      setRephraseInput(messageText);
-                    }
-                  }}
-                  className={cn(
-                    'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
-                    copilotTab === 'rephrase' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
-                  )}
-                >
-                  Rephrase
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCopilotTab('classify')}
-                  className={cn(
-                    'flex-1 py-1 text-[11px] font-bold rounded-lg transition-all',
-                    copilotTab === 'classify' ? 'bg-white text-violet-800 shadow-2xs' : 'text-violet-600 hover:text-violet-900'
-                  )}
-                >
-                  Classifier
-                </button>
-              </div>
-
-              {/* 1. Summary Sub-Tool */}
-              {copilotTab === 'summary' && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-                      <ListChecks className="w-3.5 h-3.5 text-violet-600" />
-                      Thread Summary
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateSummary}
-                      isLoading={isLoadingSummary}
-                      icon={<Sparkles className="w-3 h-3 text-violet-600" />}
-                    >
-                      {conversationSummary ? 'Regenerate' : 'Generate'}
-                    </Button>
-                  </div>
-
-                  {isLoadingSummary ? (
-                    <div className="p-6 rounded-2xl bg-violet-50/50 border border-violet-100 text-center space-y-2">
-                      <Spinner size="sm" />
-                      <p className="text-xs text-violet-700 font-medium">Analyzing conversation context & sentiment...</p>
-                    </div>
-                  ) : conversationSummary ? (
-                    <div className="space-y-3 animate-in fade-in duration-200">
-                      {/* Sentiment & Intent Badges */}
-                      <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-violet-50/70 border border-violet-100">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] uppercase font-bold text-violet-900">Sentiment:</span>
-                          <Badge
-                            variant={
-                              conversationSummary.sentiment === 'positive'
-                                ? 'success'
-                                : conversationSummary.sentiment === 'negative'
-                                ? 'danger'
-                                : conversationSummary.sentiment === 'mixed'
-                                ? 'warning'
-                                : 'secondary'
-                            }
-                            size="sm"
-                          >
-                            {conversationSummary.sentiment || 'neutral'}
-                          </Badge>
-                        </div>
-                        {(conversationSummary.mainIntent || conversationSummary.intent) && (
-                          <div className="flex items-center gap-1">
-                            <Badge variant="purple" size="sm" className="font-mono">
-                              {conversationSummary.mainIntent || conversationSummary.intent}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Summary Text */}
-                      <div className="p-3 bg-slate-50 rounded-xl border border-gray-200/70 text-xs text-gray-800 leading-relaxed">
-                        <p className="font-medium">{conversationSummary.summary}</p>
-                      </div>
-
-                      {/* Key Bullets */}
-                      {conversationSummary.keyPoints && conversationSummary.keyPoints.length > 0 && (
-                        <div className="space-y-1.5">
-                          <h5 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
-                            Key Details
-                          </h5>
-                          <ul className="space-y-1">
-                            {conversationSummary.keyPoints.map((point, idx) => (
-                              <li key={idx} className="text-xs text-gray-600 flex items-start gap-1.5">
-                                <span className="text-violet-500 font-bold">•</span>
-                                <span>{point}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Action Items / Suggested Action */}
-                      {((conversationSummary.actionItems && conversationSummary.actionItems.length > 0) || conversationSummary.suggestedAction) && (
-                        <div className="space-y-1.5">
-                          <h5 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Next Action Items
-                          </h5>
-                          <div className="space-y-1">
-                            {(conversationSummary.actionItems || (conversationSummary.suggestedAction ? [conversationSummary.suggestedAction] : [])).map((item, idx) => (
-                              <div
-                                key={idx}
-                                className="p-2 rounded-lg bg-emerald-50/60 border border-emerald-100 flex items-center justify-between gap-2 text-xs text-emerald-950"
-                              >
-                                <span className="truncate">{item}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setMessageText(item)}
-                                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-900 shrink-0 hover:underline"
-                                  title="Insert item into composer"
-                                >
-                                  Use
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-6 rounded-2xl bg-gray-50 border border-dashed border-gray-200 text-center space-y-2">
-                      <Brain className="w-8 h-8 mx-auto text-violet-400 opacity-60" />
-                      <p className="text-xs text-gray-600 font-medium">No summary generated yet.</p>
-                      <p className="text-[11px] text-gray-400">Click the button above to analyze this chat.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 2. Rephrase Sub-Tool */}
-              {copilotTab === 'rephrase' && (
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-gray-800">Draft Message</label>
-                      {messageText && (
-                        <button
-                          type="button"
-                          onClick={() => setRephraseInput(messageText)}
-                          className="text-[10px] text-violet-600 hover:text-violet-900 font-semibold"
-                        >
-                          Copy from Composer
-                        </button>
-                      )}
-                    </div>
-                    <textarea
-                      rows={3}
-                      value={rephraseInput}
-                      onChange={(e) => setRephraseInput(e.target.value)}
-                      placeholder="Type or paste your draft reply here..."
-                      className="w-full text-xs rounded-xl border border-gray-200 p-2.5 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Tone Selector */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                      Select Tone Persona
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {[
-                        { id: 'professional', label: '👔 Professional' },
-                        { id: 'friendly', label: '😊 Friendly' },
-                        { id: 'concise', label: '⚡ Concise' },
-                        { id: 'bullet_points', label: '📋 Bullet Points' },
-                        { id: 'sales_pitch', label: '🎯 Sales Pitch' },
-                      ].map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          onClick={() => setRephraseTone(t.id as any)}
-                          className={cn(
-                            'py-1.5 px-2 rounded-xl text-[11px] font-semibold transition-all border text-left truncate',
-                            rephraseTone === t.id
-                              ? 'bg-violet-600 text-white border-violet-600 shadow-2xs'
-                              : 'bg-white text-gray-700 border-gray-200 hover:bg-violet-50 hover:border-violet-200'
-                          )}
-                        >
-                          {t.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full bg-violet-600 hover:bg-violet-700"
-                    onClick={handleRephraseMessage}
-                    isLoading={isRephrasing}
-                    icon={<Wand2 className="w-3.5 h-3.5" />}
-                  >
-                    Rephrase with AI
-                  </Button>
-
-                  {/* Rephrased Result Card */}
-                  {rephraseResult && (
-                    <div className="p-3 bg-violet-50/80 rounded-xl border border-violet-200 space-y-2 animate-in fade-in duration-150">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-violet-900 uppercase tracking-wider">
-                          Rephrased Output
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(rephraseResult);
-                              showToast('Copied to clipboard', 'success');
-                            }}
-                            className="p-1 rounded text-violet-600 hover:text-violet-900 hover:bg-violet-100"
-                            title="Copy text"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-gray-800 whitespace-pre-wrap leading-relaxed bg-white p-2.5 rounded-lg border border-violet-100">
-                        {rephraseResult}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full bg-white hover:bg-violet-50 text-violet-700 border-violet-300 font-bold"
-                        onClick={() => {
-                          setMessageText(rephraseResult);
-                          showToast('Inserted into composer', 'success');
-                        }}
-                        icon={<CornerDownLeft className="w-3.5 h-3.5" />}
-                      >
-                        Insert into Composer
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 3. Intent & Urgency Classifier Sub-Tool */}
-              {copilotTab === 'classify' && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-800 mb-1">
-                      Customer Message to Classify
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={classifyText}
-                      onChange={(e) => setClassifyText(e.target.value)}
-                      placeholder="Paste incoming message to detect intent and urgency..."
-                      className="w-full text-xs rounded-xl border border-gray-200 p-2.5 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="w-full bg-fuchsia-600 hover:bg-fuchsia-700"
-                    onClick={() => handleClassifyIntent()}
-                    isLoading={isClassifying}
-                    icon={<Zap className="w-3.5 h-3.5" />}
-                  >
-                    Classify Intent & Urgency
-                  </Button>
-
-                  {intentClassification && (
-                    <div className="p-3 bg-fuchsia-50/70 rounded-xl border border-fuchsia-200 space-y-2.5 animate-in fade-in duration-150">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-fuchsia-900 uppercase tracking-wider">
-                          Classification Result
-                        </span>
-                        <Badge
-                          variant={
-                            intentClassification.urgency === 'critical'
-                              ? 'danger'
-                              : intentClassification.urgency === 'high'
-                              ? 'warning'
-                              : 'secondary'
-                          }
-                          size="sm"
-                        >
-                          Urgency: {intentClassification.urgency || 'medium'}
-                        </Badge>
-                      </div>
-
-                      <div className="space-y-1 bg-white p-2.5 rounded-lg border border-fuchsia-100">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Detected Intent:</span>
-                          <span className="font-mono font-bold text-fuchsia-900">
-                            {intentClassification.intent}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-gray-500">Sentiment:</span>
-                          <Badge variant="secondary" size="sm">
-                            {intentClassification.sentiment || 'neutral'}
-                          </Badge>
-                        </div>
-                        {intentClassification.confidence ? (
-                          <div className="pt-1">
-                            <div className="flex items-center justify-between text-[10px] text-gray-500 mb-0.5">
-                              <span>Confidence:</span>
-                              <span className="font-mono font-bold">
-                                {Math.round(intentClassification.confidence * 100)}%
-                              </span>
-                            </div>
-                            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-fuchsia-600 rounded-full"
-                                style={{ width: `${Math.round(intentClassification.confidence * 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {intentClassification.entities && Object.keys(intentClassification.entities).length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
-                            Extracted Entities:
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(intentClassification.entities).map(([k, v]) => (
-                              <span key={k} className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-fuchsia-200 font-mono text-fuchsia-950">
-                                {k}: {String(v)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
