@@ -54,6 +54,12 @@ import type {
   FunnelStage,
   WebhookSubscription,
   WebhookDeliveryLog,
+  SupportTicketSummary,
+  SupportTicketDetail,
+  SupportTicketMessage,
+  CheckoutSessionResponse,
+  SubscriptionPaymentResult,
+  InvoiceRecord,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -471,6 +477,24 @@ export const billingApi = {
   getUsage: () =>
     apiClient.get<WorkspaceUsageSummary>('/billing/usage'),
 
+  getInvoices: () =>
+    apiClient.get<{ invoices: InvoiceRecord[] }>('/billing/invoices'),
+
+  createCheckoutSession: (data: {
+    planId: string;
+    billingCycle?: 'monthly' | 'yearly';
+    gateway?: 'stripe' | 'razorpay' | 'sandbox';
+    successUrl?: string;
+    cancelUrl?: string;
+  }) => apiClient.post<CheckoutSessionResponse>('/billing/checkout', data),
+
+  verifyPayment: (data: {
+    planId: string;
+    billingCycle?: 'monthly' | 'yearly';
+    gateway?: 'stripe' | 'razorpay' | 'sandbox';
+    paymentReference: string;
+  }) => apiClient.post<SubscriptionPaymentResult>('/billing/verify-payment', data),
+
   updatePlan: (planId: string) =>
     apiClient.post<{ message: string; plan: any }>('/billing/plan', { planId }),
 };
@@ -533,6 +557,27 @@ export const webhooksApi = {
   listDeliveryLogs: (id: string, limit?: number) =>
     apiClient.get<WebhookDeliveryLog[]>(`/webhooks/subscriptions/${id}/deliveries`, { limit }),
 };
+
+// ==================== SUPPORT & HELPDESK TICKETING API ====================
+export const supportApi = {
+  listTickets: (params?: { status?: string; search?: string }) =>
+    apiClient.get<SupportTicketSummary[]>('/support/tickets', params),
+
+  createTicket: (data: {
+    subject: string;
+    category?: string;
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    message: string;
+    attachments?: any[];
+  }) => apiClient.post<SupportTicketDetail>('/support/tickets', data),
+
+  getTicket: (id: string) =>
+    apiClient.get<SupportTicketDetail>(`/support/tickets/${id}`),
+
+  postMessage: (id: string, data: { message: string; attachments?: any[] }) =>
+    apiClient.post<SupportTicketMessage>(`/support/tickets/${id}/messages`, data),
+};
+
 
 
 

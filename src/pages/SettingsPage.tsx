@@ -27,6 +27,10 @@ import {
   Building2,
   ShieldCheck,
   Edit3,
+  ArrowRight,
+  ExternalLink,
+  Calendar,
+  DollarSign,
 } from 'lucide-react';
 import {
   teamApi,
@@ -44,6 +48,9 @@ import type {
   WorkspaceUsageSummary,
   AuditLogEntry,
   PlanConfig,
+  CheckoutSessionResponse,
+  SubscriptionPaymentResult,
+  InvoiceRecord,
 } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -112,10 +119,18 @@ export const SettingsPage: React.FC = () => {
 
   // ==================== BILLING STATE ====================
   const [usageSummary, setUsageSummary] = useState<WorkspaceUsageSummary | null>(null);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [isBillingLoading, setIsBillingLoading] = useState(false);
-  const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
+  const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<InvoiceRecord | null>(null);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [selectedPlanForUpgrade, setSelectedPlanForUpgrade] = useState<PlanConfig | null>(null);
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [selectedGateway, setSelectedGateway] = useState<'stripe' | 'razorpay' | 'sandbox'>('stripe');
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [checkoutSession, setCheckoutSession] = useState<CheckoutSessionResponse | null>(null);
+  const [paymentSuccessResult, setPaymentSuccessResult] = useState<SubscriptionPaymentResult | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<'plan_select' | 'payment_gateway' | 'completed'>('plan_select');
 
   // ==================== AUDIT & COMPLIANCE STATE ====================
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -158,8 +173,12 @@ export const SettingsPage: React.FC = () => {
   const loadBilling = useCallback(async () => {
     try {
       setIsBillingLoading(true);
-      const res = await billingApi.getUsage();
-      setUsageSummary(res);
+      const [usageRes, invoicesRes] = await Promise.all([
+        billingApi.getUsage(),
+        billingApi.getInvoices().catch(() => ({ invoices: [] })),
+      ]);
+      setUsageSummary(usageRes);
+      setInvoices(invoicesRes?.invoices || []);
     } catch (err: any) {
       showToast(err.message || 'Failed to load usage summary', 'error');
     } finally {
@@ -370,21 +389,95 @@ export const SettingsPage: React.FC = () => {
   // ==================== BILLING ACTIONS ====================
   const handlePlanSelect = (plan: PlanConfig) => {
     setSelectedPlanForUpgrade(plan);
+    setCheckoutStep('plan_select');
+    setCheckoutSession(null);
+    setPaymentSuccessResult(null);
     setIsPlanModalOpen(true);
   };
 
-  const handleConfirmPlanChange = async () => {
+  const handleStartCheckout = async () => {
+    if (!selectedPlanForUpgrade) return;
+
+    const priceMonthly = selectedPlanForUpgrade.priceMonthly || 0;
+    const priceYearly = selectedPlanForUpgrade.priceYearly !== undefined ? selectedPlanForUpgrade.priceYearly : priceMonthly * 10;
+    const amount = billingCycle === 'yearly' ? priceYearly : priceMonthly;
+
+    try {
+      setIsCheckingOut(true);
+
+      if (amount <= 0) {
+        // Instant activation for Free Tier
+        const verifyRes = await billingApi.verifyPayment({
+          planId: selectedPlanForUpgrade.id,
+          billingCycle,
+          gateway: 'sandbox',
+          paymentReference: `free_act_${Date.now()}`,
+        });
+        setPaymentSuccessResult(verifyRes);
+        setCheckoutStep('completed');
+        showToast(`Workspace upgraded to ${selectedPlanForUpgrade.name}!`, 'success');
+        await loadBilling();
+        await refreshProfile();
+        return;
+      }
+
+      // Initiate SaaS checkout session
+      const session = await billingApi.createCheckoutSession({
+        planId: selectedPlanForUpgrade.id,
+        billingCycle,
+        gateway: selectedGateway,
+        successUrl: window.location.href,
+        cancelUrl: window.location.href,
+      });
+
+      setCheckoutSession(session);
+
+      if (selectedGateway === 'sandbox') {
+        // Auto-verify payment for Sandbox mode
+        const verifyRes = await billingApi.verifyPayment({
+          planId: selectedPlanForUpgrade.id,
+          billingCycle,
+          gateway: 'sandbox',
+          paymentReference: `sim_${session.sessionId}`,
+        });
+        setPaymentSuccessResult(verifyRes);
+        setCheckoutStep('completed');
+        showToast(`Workspace upgraded to ${selectedPlanForUpgrade.name}!`, 'success');
+        await loadBilling();
+        await refreshProfile();
+      } else {
+        setCheckoutStep('payment_gateway');
+        if (session.checkoutUrl) {
+          window.open(session.checkoutUrl, '_blank', 'noopener,noreferrer');
+        }
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Failed to initiate checkout', 'error');
+    } finally {
+      setIsCheckingOut(false);
+    }
+  };
+
+  const handleVerifyGatewayPayment = async (referenceOverride?: string) => {
     if (!selectedPlanForUpgrade) return;
     try {
-      setIsUpdatingPlan(true);
-      await billingApi.updatePlan(selectedPlanForUpgrade.id);
-      showToast(`Workspace upgraded to ${selectedPlanForUpgrade.name}!`, 'success');
-      setIsPlanModalOpen(false);
-      loadBilling();
+      setIsVerifyingPayment(true);
+      const ref = referenceOverride || checkoutSession?.sessionId || `tx_ref_${Date.now()}`;
+      const verifyRes = await billingApi.verifyPayment({
+        planId: selectedPlanForUpgrade.id,
+        billingCycle,
+        gateway: selectedGateway,
+        paymentReference: ref,
+      });
+      setPaymentSuccessResult(verifyRes);
+      setCheckoutStep('completed');
+      showToast(`Payment verified & Workspace upgraded to ${selectedPlanForUpgrade.name}!`, 'success');
+      await loadBilling();
+      await refreshProfile();
     } catch (err: any) {
-      showToast(err.message || 'Failed to update plan', 'error');
+      showToast(err.message || 'Payment verification failed', 'error');
     } finally {
-      setIsUpdatingPlan(false);
+      setIsVerifyingPayment(false);
     }
   };
 
@@ -1054,27 +1147,70 @@ export const SettingsPage: React.FC = () => {
                 </Card>
               </div>
 
-              {/* Plan Tiers Grid */}
+              {/* Plan Tiers Grid Header & Cycle Toggle */}
               <div className="pt-4 space-y-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Subscription Plans & Quota Tiers</h3>
-                  <p className="text-xs text-gray-500">
-                    Switch between plan tiers instantly to scale messaging bandwidth, AI intelligence, and connected channels.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Subscription Plans & Quota Tiers</h3>
+                    <p className="text-xs text-gray-500">
+                      Switch between plan tiers with verified payment checkout to scale messaging bandwidth, AI intelligence, and channels.
+                    </p>
+                  </div>
+
+                  {/* Billing Cycle Switcher */}
+                  <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('monthly')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 ${
+                        billingCycle === 'monthly'
+                          ? 'bg-white text-gray-900 shadow-xs'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      Monthly Billing
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('yearly')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all duration-150 ${
+                        billingCycle === 'yearly'
+                          ? 'bg-white text-gray-900 shadow-xs'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      <span>Annual Billing</span>
+                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                        Save ~17%
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   {usageSummary.availablePlans.map((plan) => {
                     const isCurrent = usageSummary.planId === plan.id;
+                    const priceMonthly = plan.priceMonthly || 0;
+                    const priceYearly = plan.priceYearly !== undefined ? plan.priceYearly : priceMonthly * 10;
+                    const displayPrice = billingCycle === 'yearly' ? priceYearly : priceMonthly;
+
                     return (
                       <div
                         key={plan.id}
-                        className={`rounded-2xl p-5 border flex flex-col justify-between transition-all duration-200 ${
+                        className={`rounded-2xl p-5 border flex flex-col justify-between transition-all duration-200 relative ${
                           isCurrent
                             ? 'bg-primary-50/40 border-primary-500 ring-2 ring-primary-500 shadow-sm'
                             : 'bg-white border-gray-200 hover:border-gray-300 shadow-xs'
                         }`}
                       >
+                        {plan.badgeText && (
+                          <div className="absolute -top-2.5 right-4">
+                            <span className="bg-primary-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs uppercase tracking-wide">
+                              {plan.badgeText}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="space-y-4">
                           <div className="flex justify-between items-start">
                             <div>
@@ -1088,9 +1224,18 @@ export const SettingsPage: React.FC = () => {
                             )}
                           </div>
 
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-3xl font-extrabold text-gray-900">${plan.priceMonthly}</span>
-                            <span className="text-xs text-gray-500">/ month</span>
+                          <div>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-3xl font-extrabold text-gray-900">${displayPrice}</span>
+                              <span className="text-xs text-gray-500">
+                                {displayPrice === 0 ? 'forever' : billingCycle === 'yearly' ? '/ year' : '/ month'}
+                              </span>
+                            </div>
+                            {billingCycle === 'yearly' && displayPrice > 0 && (
+                              <p className="text-[11px] text-emerald-600 font-medium mt-0.5">
+                                Equivalent to ${(displayPrice / 12).toFixed(1)}/mo (2 months free)
+                              </p>
+                            )}
                           </div>
 
                           <div className="space-y-2 pt-2 border-t border-gray-100 text-xs">
@@ -1128,15 +1273,97 @@ export const SettingsPage: React.FC = () => {
                             <Button
                               variant="primary"
                               onClick={() => handlePlanSelect(plan)}
-                              className="w-full text-xs font-semibold"
+                              className="w-full text-xs font-semibold flex items-center justify-center gap-1.5"
                             >
-                              Switch to {plan.name}
+                              <span>{displayPrice === 0 ? 'Activate' : 'Upgrade to'} {plan.name}</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
                             </Button>
                           )}
                         </div>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* Invoices & Billing History */}
+                <div className="pt-6 space-y-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-gray-700" />
+                      Invoices & Payment History
+                    </h3>
+                    <p className="text-xs text-gray-500">
+                      Official sequential receipts generated for workspace subscriptions and plan upgrades.
+                    </p>
+                  </div>
+
+                  <Card>
+                    {invoices.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-gray-500">
+                        <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="font-semibold text-gray-700">No Invoices Recorded Yet</p>
+                        <p className="text-gray-400 mt-1">
+                          Invoices will automatically generate when you upgrade subscription plans or activate billing tiers.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-gray-50/80 border-b border-gray-200 text-gray-500 font-semibold uppercase tracking-wider">
+                            <tr>
+                              <th className="px-5 py-3.5">Invoice #</th>
+                              <th className="px-5 py-3.5">Plan Tier</th>
+                              <th className="px-5 py-3.5">Amount</th>
+                              <th className="px-5 py-3.5">Cycle</th>
+                              <th className="px-5 py-3.5">Gateway</th>
+                              <th className="px-5 py-3.5">Status</th>
+                              <th className="px-5 py-3.5">Date Issued</th>
+                              <th className="px-5 py-3.5 text-right">Receipt</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {invoices.map((inv) => (
+                              <tr key={inv.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-5 py-3.5 font-mono font-semibold text-gray-900">
+                                  {inv.invoiceNumber}
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  <Badge variant="purple">{inv.planName}</Badge>
+                                </td>
+                                <td className="px-5 py-3.5 font-semibold text-gray-900">
+                                  ${inv.amount.toLocaleString()} {inv.currency}
+                                </td>
+                                <td className="px-5 py-3.5 capitalize text-gray-600">
+                                  {inv.billingCycle}
+                                </td>
+                                <td className="px-5 py-3.5 uppercase font-medium text-gray-700">
+                                  {inv.paymentMethod}
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  <Badge variant={inv.status === 'paid' ? 'success' : 'secondary'}>
+                                    {inv.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-5 py-3.5 text-gray-500">
+                                  {new Date(inv.createdAt).toLocaleDateString()}
+                                </td>
+                                <td className="px-5 py-3.5 text-right">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setSelectedInvoiceForModal(inv)}
+                                    className="text-xs"
+                                  >
+                                    View Receipt
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Card>
                 </div>
               </div>
             </>
@@ -1467,42 +1694,336 @@ export const SettingsPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Modal 4: Plan Upgrade Confirmation */}
+      {/* Modal 4: SaaS Multi-Gateway Subscription Checkout & Invoice Receipt */}
       {selectedPlanForUpgrade && (
         <Modal
           isOpen={isPlanModalOpen}
-          onClose={() => setIsPlanModalOpen(false)}
-          title={`Confirm Subscription Switch: ${selectedPlanForUpgrade.name}`}
+          onClose={() => {
+            if (!isCheckingOut && !isVerifyingPayment) {
+              setIsPlanModalOpen(false);
+              setCheckoutStep('plan_select');
+            }
+          }}
+          title={
+            checkoutStep === 'completed'
+              ? 'Subscription Activated & Invoiced'
+              : checkoutStep === 'payment_gateway'
+              ? `Complete Payment: ${selectedPlanForUpgrade.name}`
+              : `Upgrade Subscription: ${selectedPlanForUpgrade.name}`
+          }
         >
-          <div className="space-y-4 text-xs">
-            <p className="text-gray-600">
-              You are about to switch your workspace subscription tier to{' '}
-              <strong className="text-gray-900">{selectedPlanForUpgrade.name}</strong> (${selectedPlanForUpgrade.priceMonthly}/mo).
-            </p>
+          {/* STEP 1: Plan Summary, Cycle & Gateway Selection */}
+          {checkoutStep === 'plan_select' && (() => {
+            const priceMonthly = selectedPlanForUpgrade.priceMonthly || 0;
+            const priceYearly = selectedPlanForUpgrade.priceYearly !== undefined ? selectedPlanForUpgrade.priceYearly : priceMonthly * 10;
+            const currentAmount = billingCycle === 'yearly' ? priceYearly : priceMonthly;
+            const isFree = currentAmount === 0;
 
-            <div className="p-3 bg-gray-50 rounded-xl space-y-1.5 border border-gray-200">
-              <div className="font-semibold text-gray-900">New Workspace Quotas:</div>
-              <ul className="list-disc list-inside text-gray-600 space-y-1">
-                <li>Up to <strong>{selectedPlanForUpgrade.maxChannels}</strong> Connected Channels</li>
-                <li>Up to <strong>{selectedPlanForUpgrade.maxContacts.toLocaleString()}</strong> Contacts</li>
-                <li>Up to <strong>{selectedPlanForUpgrade.maxMonthlyMessages.toLocaleString()}</strong> Messages/month</li>
-                <li>Up to <strong>{selectedPlanForUpgrade.maxMonthlyAiQueries.toLocaleString()}</strong> AI Copilot Queries/month</li>
-              </ul>
-            </div>
+            return (
+              <div className="space-y-5 text-xs">
+                {/* Billing Cycle Switcher within modal */}
+                <div>
+                  <label className="block font-semibold text-gray-900 mb-2">Select Billing Cycle</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('monthly')}
+                      className={`p-3 rounded-xl border text-left transition-all ${
+                        billingCycle === 'monthly'
+                          ? 'border-primary-500 bg-primary-50/50 ring-2 ring-primary-500/20'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-gray-900 text-sm">Monthly</span>
+                        <span className="font-bold text-gray-900">${priceMonthly}/mo</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500">Billed monthly, cancel anytime</p>
+                    </button>
 
-            <div className="pt-3 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setIsPlanModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleConfirmPlanChange}
-                disabled={isUpdatingPlan}
-              >
-                {isUpdatingPlan ? 'Switching...' : `Confirm Switch to ${selectedPlanForUpgrade.name}`}
-              </Button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingCycle('yearly')}
+                      className={`p-3 rounded-xl border text-left transition-all relative ${
+                        billingCycle === 'yearly'
+                          ? 'border-primary-500 bg-primary-50/50 ring-2 ring-primary-500/20'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase">
+                        Save ~17%
+                      </span>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="font-bold text-gray-900 text-sm">Annual</span>
+                        <span className="font-bold text-emerald-700">${priceYearly}/yr</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500">2 months free (${(priceYearly / 12).toFixed(1)}/mo)</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quota Entitlements Summary */}
+                <div className="p-3.5 bg-gray-50 rounded-xl space-y-2 border border-gray-200">
+                  <div className="font-semibold text-gray-900 flex items-center justify-between">
+                    <span>Workspace Quota Entitlements:</span>
+                    <span className="text-primary-700 font-bold text-sm">
+                      {isFree ? 'FREE' : `$${currentAmount} / ${billingCycle}`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-gray-600 text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>{selectedPlanForUpgrade.maxChannels}</strong> Channels</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>{selectedPlanForUpgrade.maxContacts.toLocaleString()}</strong> Contacts</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>{selectedPlanForUpgrade.maxMonthlyMessages.toLocaleString()}</strong> Msgs / mo</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span><strong>{selectedPlanForUpgrade.maxMonthlyAiQueries.toLocaleString()}</strong> AI Queries</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Gateway Selection (Only for paid plans) */}
+                {!isFree && (
+                  <div>
+                    <label className="block font-semibold text-gray-900 mb-2">Payment Gateway</label>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGateway('stripe')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          selectedGateway === 'stripe'
+                            ? 'border-indigo-500 bg-indigo-50/50 ring-2 ring-indigo-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-bold text-gray-900 text-xs flex items-center gap-1">
+                          <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Stripe</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Cards & Global</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGateway('razorpay')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          selectedGateway === 'razorpay'
+                            ? 'border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-bold text-gray-900 text-xs flex items-center gap-1">
+                          <DollarSign className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Razorpay</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">UPI & Netbanking</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGateway('sandbox')}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          selectedGateway === 'sandbox'
+                            ? 'border-emerald-500 bg-emerald-50/50 ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-bold text-gray-900 text-xs flex items-center gap-1">
+                          <Zap className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Sandbox</span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Instant Sim</p>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-3 flex justify-end gap-2 border-t border-gray-100">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsPlanModalOpen(false)}
+                    disabled={isCheckingOut}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleStartCheckout}
+                    disabled={isCheckingOut}
+                    className="flex items-center gap-1.5"
+                  >
+                    {isCheckingOut ? (
+                      'Creating Session...'
+                    ) : isFree ? (
+                      'Activate Free Tier'
+                    ) : (
+                      <>
+                        <span>Proceed to Pay ${currentAmount}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* STEP 2: External Gateway Checkout & Verification */}
+          {checkoutStep === 'payment_gateway' && checkoutSession && (
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-sm">
+                  <CreditCard className="w-4 h-4 text-blue-600" />
+                  <span>Gateway Session Initialized</span>
+                </div>
+                <p className="text-blue-700 text-[11px]">
+                  A secure checkout session has been generated via <strong>{checkoutSession.gateway.toUpperCase()}</strong>.
+                </p>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Target Plan:</span>
+                  <span className="font-bold text-gray-900">{checkoutSession.planName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Billing Cycle:</span>
+                  <span className="font-semibold text-gray-800 capitalize">{checkoutSession.billingCycle}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Total Due:</span>
+                  <span className="font-bold text-gray-900">${checkoutSession.amount} {checkoutSession.currency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Session ID:</span>
+                  <span className="font-mono text-gray-600 text-[10px]">{checkoutSession.sessionId}</span>
+                </div>
+              </div>
+
+              {checkoutSession.checkoutUrl && (
+                <div className="p-3 bg-indigo-50/60 border border-indigo-200 rounded-xl flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-indigo-900 text-xs">Complete Payment on Gateway</p>
+                    <p className="text-indigo-600 text-[10px]">Tab was opened automatically. Click if blocked.</p>
+                  </div>
+                  <a
+                    href={checkoutSession.checkoutUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs"
+                  >
+                    <span>Open Checkout</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[11px]">
+                <strong>Verification Note:</strong> Once you complete payment on the gateway, click the button below to verify transaction and apply quota upgrades immediately.
+              </div>
+
+              <div className="pt-3 flex justify-between items-center border-t border-gray-100">
+                <Button
+                  variant="secondary"
+                  onClick={() => setCheckoutStep('plan_select')}
+                  disabled={isVerifyingPayment}
+                >
+                  Back
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => handleVerifyGatewayPayment()}
+                  disabled={isVerifyingPayment}
+                  className="flex items-center gap-1.5"
+                >
+                  {isVerifyingPayment ? (
+                    'Verifying Payment...'
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                      <span>Verify Payment & Activate</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* STEP 3: Invoice Receipt & Confirmation */}
+          {checkoutStep === 'completed' && paymentSuccessResult && (
+            <div className="space-y-4 text-xs">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 space-y-1 text-center">
+                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2 text-emerald-600">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h4 className="font-bold text-sm text-emerald-900">Upgrade Successful!</h4>
+                <p className="text-emerald-700 text-xs">
+                  {paymentSuccessResult.message || 'Your workspace quotas have been upgraded.'}
+                </p>
+              </div>
+
+              {paymentSuccessResult.payment && (
+                <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2 text-[11px]">
+                  <div className="font-bold text-gray-900 border-b border-gray-200 pb-1 flex justify-between items-center">
+                    <span>Official Invoice Receipt</span>
+                    <span className="font-mono text-primary-700 text-xs font-bold">
+                      {paymentSuccessResult.payment.invoiceNumber}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <span className="text-gray-500 block">Amount Paid:</span>
+                      <span className="font-bold text-gray-900">
+                        ${paymentSuccessResult.payment.amount} {paymentSuccessResult.payment.currency}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Billing Cycle:</span>
+                      <span className="font-semibold text-gray-800 capitalize">
+                        {paymentSuccessResult.payment.billingCycle}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Payment Method:</span>
+                      <span className="font-semibold text-gray-800 uppercase">
+                        {paymentSuccessResult.payment.paymentMethod}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block">Plan Expiration:</span>
+                      <span className="font-semibold text-gray-800">
+                        {paymentSuccessResult.subscription?.planExpiresAt
+                          ? new Date(paymentSuccessResult.subscription.planExpiresAt).toLocaleDateString()
+                          : 'Ongoing (Auto-renew)'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-3 flex justify-end border-t border-gray-100">
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setIsPlanModalOpen(false);
+                    setCheckoutStep('plan_select');
+                  }}
+                  className="w-full text-xs font-semibold"
+                >
+                  Done & Return to Workspace
+                </Button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -1578,6 +2099,71 @@ export const SettingsPage: React.FC = () => {
 
             <div className="pt-2 flex justify-end">
               <Button variant="secondary" onClick={() => setSelectedAuditLog(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal 7: Invoice Receipt Detail Viewer */}
+      {selectedInvoiceForModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => setSelectedInvoiceForModal(null)}
+          title={`Invoice ${selectedInvoiceForModal.invoiceNumber}`}
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+              <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Omni Platform SaaS Receipt</span>
+                  <p className="font-mono text-sm font-bold text-gray-900">{selectedInvoiceForModal.invoiceNumber}</p>
+                </div>
+                <Badge variant={selectedInvoiceForModal.status === 'paid' ? 'success' : 'secondary'}>
+                  {selectedInvoiceForModal.status.toUpperCase()}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-[11px]">
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Plan Tier</span>
+                  <span className="font-bold text-gray-900">{selectedInvoiceForModal.planName}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Amount Paid</span>
+                  <span className="font-bold text-gray-900">${selectedInvoiceForModal.amount} {selectedInvoiceForModal.currency}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Billing Cycle</span>
+                  <span className="font-semibold text-gray-800 capitalize">{selectedInvoiceForModal.billingCycle}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Payment Gateway</span>
+                  <span className="font-semibold text-gray-800 uppercase">{selectedInvoiceForModal.paymentMethod}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Transaction Ref</span>
+                  <span className="font-mono text-gray-700 text-[10px]">{selectedInvoiceForModal.transactionReference || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase">Date Issued</span>
+                  <span className="text-gray-700">{new Date(selectedInvoiceForModal.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {selectedInvoiceForModal.periodStart && selectedInvoiceForModal.periodEnd && (
+                <div className="pt-2 border-t border-gray-200 text-[11px] text-gray-600 flex justify-between">
+                  <span>Coverage Period:</span>
+                  <span className="font-medium">
+                    {new Date(selectedInvoiceForModal.periodStart).toLocaleDateString()} &mdash; {new Date(selectedInvoiceForModal.periodEnd).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setSelectedInvoiceForModal(null)}>
                 Close
               </Button>
             </div>

@@ -20,10 +20,11 @@ import { DealsPage } from './pages/DealsPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { SearchPage } from './pages/SearchPage';
-import { SystemLogsPage } from './pages/SystemLogsPage';
 import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { SupportTicketsPage } from './pages/SupportTicketsPage';
+import { DocumentationPage } from './pages/DocumentationPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
@@ -93,13 +94,17 @@ function App() {
               }
             />
 
-            {/* Public Legal & Compliance Routes (Unauthenticated for Meta App Review) */}
+            {/* Public Legal & Compliance Routes (Unauthenticated for Meta App Review & Direct Manual Access) */}
             <Route path="/privacy" element={<PrivacyPolicyPage />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/terms-of-service" element={<TermsPage />} />
             <Route path="/data-deletion" element={<DataDeletionPage />} />
             <Route path="/data-deletion-instructions" element={<DataDeletionPage />} />
+            <Route path="/docs" element={<DocumentationPage />} />
+            <Route path="/documentation" element={<DocumentationPage />} />
+            <Route path="/guide" element={<DocumentationPage />} />
+            <Route path="/manual" element={<DocumentationPage />} />
 
             {/* Protected Routes */}
             <Route
@@ -124,9 +129,13 @@ function App() {
               <Route path="orders" element={<OrdersPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="knowledge-bases" element={<KnowledgeBasePage />} />
+              <Route path="docs" element={<DocumentationPage />} />
+              <Route path="documentation" element={<DocumentationPage />} />
+              <Route path="guide" element={<DocumentationPage />} />
+              <Route path="manual" element={<DocumentationPage />} />
+              <Route path="support" element={<SupportTicketsPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="search" element={<SearchPage />} />
-              <Route path="system-logs" element={<SystemLogsPage />} />
             </Route>
 
             {/* Catch-all redirect */}

@@ -943,11 +943,57 @@ export interface PlanConfig {
   name: string;
   description: string;
   priceMonthly: number;
+  priceYearly?: number;
+  currency?: string;
   maxChannels: number;
   maxContacts: number;
   maxMonthlyMessages: number;
   maxMonthlyAiQueries: number;
   features: string[];
+  badgeText?: string | null;
+}
+
+export interface CheckoutSessionResponse {
+  sessionId: string;
+  checkoutUrl?: string;
+  paymentLink?: string;
+  gateway: 'stripe' | 'razorpay' | 'sandbox';
+  planId: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  billingCycle: 'monthly' | 'yearly';
+  isFree: boolean;
+  isSandbox: boolean;
+  notes?: string;
+}
+
+export interface SubscriptionPaymentResult {
+  success: boolean;
+  message: string;
+  payment?: {
+    id: string;
+    invoiceNumber: string;
+    amount: number;
+    currency: string;
+    billingCycle: string;
+    paymentMethod: string;
+    status: string;
+    periodStart: string;
+    periodEnd: string;
+    createdAt: string;
+  };
+  subscription?: {
+    tenantId: string;
+    planId: string;
+    planName: string;
+    planStatus: string;
+    planExpiresAt: string | null;
+    maxChannels: number;
+    maxContacts: number;
+    maxMonthlyMessages: number;
+    maxMonthlyAiQueries: number;
+  };
 }
 
 export interface UsageMetric {
@@ -957,12 +1003,32 @@ export interface UsageMetric {
   unit: string;
 }
 
+export interface InvoiceRecord {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  planId: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  billingCycle: string;
+  paymentMethod: string;
+  transactionReference: string | null;
+  status: string;
+  invoiceNumber: string;
+  periodStart: string;
+  periodEnd: string;
+  notes: string | null;
+  createdAt: string;
+}
+
 export interface WorkspaceUsageSummary {
   tenantId: string;
   tenantName: string;
   planId: string;
   planName: string;
   planStatus: string;
+  planExpiresAt?: string | null;
   billingCycleEnd: string;
   metrics: {
     channels: UsageMetric;
@@ -1121,6 +1187,37 @@ export interface AppNotification {
   channelType?: string;
   meta?: Record<string, any>;
 }
+
+// Support & Helpdesk Ticketing (Tenant)
+export interface SupportTicketMessage {
+  id: string;
+  ticketId: string;
+  senderType: 'user' | 'platform_staff';
+  senderId?: string;
+  senderName?: string;
+  senderEmail?: string;
+  message: string;
+  attachments?: Array<{ url: string; filename: string; size?: number }>;
+  createdAt: string;
+}
+
+export interface SupportTicketSummary {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  category: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'open' | 'in_progress' | 'pending_customer' | 'resolved' | 'closed';
+  createdAt: string;
+  updatedAt: string;
+  lastReplyAt?: string;
+  messageCount: number;
+}
+
+export interface SupportTicketDetail extends SupportTicketSummary {
+  messages: SupportTicketMessage[];
+}
+
 
 
 
