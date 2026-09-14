@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Globe,
   Mail,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../common/Button';
@@ -33,6 +34,12 @@ export const PublicLegalLayout: React.FC<PublicLegalLayoutProps> = ({
   const location = useLocation();
 
   const navLinks = [
+    {
+      name: 'Documentation',
+      href: '/docs',
+      icon: BookOpen,
+      description: 'Official user manual, WhatsApp setup & guides',
+    },
     {
       name: 'Privacy Policy',
       href: '/privacy',
@@ -75,6 +82,7 @@ export const PublicLegalLayout: React.FC<PublicLegalLayoutProps> = ({
               const Icon = item.icon;
               const isActive =
                 location.pathname === item.href ||
+                (item.href === '/docs' && (location.pathname === '/documentation' || location.pathname === '/guide' || location.pathname === '/manual')) ||
                 (item.href === '/privacy' && location.pathname === '/privacy-policy') ||
                 (item.href === '/terms' && location.pathname === '/terms-of-service') ||
                 (item.href === '/data-deletion' && location.pathname === '/data-deletion-instructions');
@@ -199,8 +207,13 @@ export const PublicLegalLayout: React.FC<PublicLegalLayoutProps> = ({
 
             {/* Column 2: Legal & Trust */}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Compliance & Legal</h4>
+              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Resources & Legal</h4>
               <ul className="space-y-1.5 text-xs text-slate-600">
+                <li>
+                  <Link to="/docs" className="hover:text-primary-600 transition-colors flex items-center gap-1 font-medium text-primary-600">
+                    User Documentation & Guide
+                  </Link>
+                </li>
                 <li>
                   <Link to="/privacy" className="hover:text-primary-600 transition-colors">
                     Privacy Policy

@@ -104,9 +104,13 @@ export const LoginPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Legal Compliance Footer */}
+          {/* Legal Compliance & Docs Footer */}
           <div className="pt-6 text-center">
-            <div className="flex items-center justify-center gap-3 text-[11px] text-gray-400">
+            <div className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400">
+              <Link to="/docs" className="hover:text-primary-600 transition-colors font-medium text-primary-600">
+                Documentation
+              </Link>
+              <span>•</span>
               <Link to="/privacy" className="hover:text-primary-600 transition-colors">
                 Privacy Policy
               </Link>
