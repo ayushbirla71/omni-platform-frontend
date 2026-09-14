@@ -29,7 +29,7 @@ export interface AuthResponse {
 }
 
 // Channel
-export type ChannelType = 'whatsapp' | 'telegram' | 'instagram' | 'messenger';
+export type ChannelType = 'whatsapp' | 'telegram' | 'instagram' | 'messenger' | 'webchat';
 export type ChannelStatus = 'active' | 'inactive' | 'error';
 
 export interface Channel {
@@ -1218,6 +1218,75 @@ export interface SupportTicketDetail extends SupportTicketSummary {
   messages: SupportTicketMessage[];
 }
 
+// Live Webchat Widget Types
+export interface WebchatBusinessHours {
+  enabled: boolean;
+  timezone?: string;
+  schedule?: Record<
+    string,
+    {
+      start: string;
+      end: string;
+      enabled: boolean;
+    }
+  >;
+}
 
+export interface WebchatWidget {
+  id: string;
+  tenantId: string;
+  channelId: string;
+  widgetKey: string;
+  title: string;
+  subtitle: string;
+  primaryColor: string;
+  greetingMessage: string;
+  placeholderText: string;
+  launcherText: string;
+  launcherIcon: string;
+  position: "bottom-right" | "bottom-left";
+  requireEmail: boolean;
+  requireName: boolean;
+  allowedOrigins: string[];
+  isActive: boolean;
+  showAgentAvatar: boolean;
+  offlineMessage: string;
+  businessHours: WebchatBusinessHours;
+  createdAt: string;
+  updatedAt: string;
+  displayName?: string;
+  channelDisplayName?: string;
+  defaultFlowId?: string | null;
+  channel?: Channel;
+}
 
+export interface PublicWidgetConfig {
+  widgetKey: string;
+  title: string;
+  subtitle: string;
+  primaryColor: string;
+  greetingMessage: string;
+  placeholderText: string;
+  launcherText: string;
+  launcherIcon: string;
+  position: "bottom-right" | "bottom-left";
+  requireEmail: boolean;
+  requireName: boolean;
+  isActive: boolean;
+  showAgentAvatar: boolean;
+  offlineMessage: string;
+  isOnline: boolean;
+  allowedOrigins: string[];
+}
 
+export interface VisitorSessionInitResponse {
+  token: string;
+  visitorSessionId: string;
+  conversationId: string;
+  contactId: string;
+  contactName: string;
+  isOnline: boolean;
+  greetingMessage: string;
+  offlineMessage: string;
+  messages: Message[];
+}

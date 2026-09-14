@@ -60,6 +60,10 @@ import type {
   CheckoutSessionResponse,
   SubscriptionPaymentResult,
   InvoiceRecord,
+  WebchatWidget,
+  WebchatBusinessHours,
+  PublicWidgetConfig,
+  VisitorSessionInitResponse,
 } from '../types';
 
 // ==================== AUTH API ====================
@@ -578,6 +582,116 @@ export const supportApi = {
     apiClient.post<SupportTicketMessage>(`/support/tickets/${id}/messages`, data),
 };
 
+// ==================== LIVE WEBCHAT WIDGET API (TENANT MANAGEMENT) ====================
+export const webchatApi = {
+  listWidgets: () =>
+    apiClient.get<{ widgets: WebchatWidget[] }>('/channels/webchat/widgets'),
 
+  getWidget: (id: string) =>
+    apiClient.get<{ widget: WebchatWidget }>(`/channels/webchat/widgets/${id}`),
 
+  createWidget: (data: {
+    displayName?: string;
+    defaultFlowId?: string | null;
+    title?: string;
+    subtitle?: string;
+    primaryColor?: string;
+    greetingMessage?: string;
+    placeholderText?: string;
+    launcherText?: string;
+    launcherIcon?: string;
+    position?: 'bottom-right' | 'bottom-left';
+    requireEmail?: boolean;
+    requireName?: boolean;
+    allowedOrigins?: string[];
+    isActive?: boolean;
+    showAgentAvatar?: boolean;
+    offlineMessage?: string;
+    businessHours?: WebchatBusinessHours;
+  }) => apiClient.post<{ widget: WebchatWidget }>('/channels/webchat/widgets', data),
 
+  updateWidget: (
+    id: string,
+    data: {
+      displayName?: string;
+      defaultFlowId?: string | null;
+      title?: string;
+      subtitle?: string;
+      primaryColor?: string;
+      greetingMessage?: string;
+      placeholderText?: string;
+      launcherText?: string;
+      launcherIcon?: string;
+      position?: 'bottom-right' | 'bottom-left';
+      requireEmail?: boolean;
+      requireName?: boolean;
+      allowedOrigins?: string[];
+      isActive?: boolean;
+      showAgentAvatar?: boolean;
+      offlineMessage?: string;
+      businessHours?: WebchatBusinessHours;
+    }
+  ) => apiClient.put<{ widget: WebchatWidget }>(`/channels/webchat/widgets/${id}`, data),
+
+  deleteWidget: (id: string) =>
+    apiClient.delete<{ success: boolean; message: string }>(`/channels/webchat/widgets/${id}`),
+};
+
+// ==================== PUBLIC WEBCHAT VISITOR API ====================
+export const webchatVisitorApi = {
+  getConfig: (widgetKey: string) =>
+    apiClient.get<PublicWidgetConfig>(`/webchat/config/${widgetKey}`),
+
+  initSession: (data: {
+    widgetKey: string;
+    visitorSessionId?: string;
+    contactName?: string;
+    contactEmail?: string;
+    metadata?: Record<string, any>;
+  }) => apiClient.post<VisitorSessionInitResponse>('/webchat/init', data),
+
+  getMessages: (token: string) =>
+    apiClient.get<{ messages: Message[] }>('/webchat/messages', undefined, {
+      headers: { Authorization: `Bearer ${token}` },
+      skipAuthRedirect: true,
+    }),
+
+  sendMessage: (
+    token: string,
+    data: {
+      text?: string;
+      mediaUrl?: string;
+      mediaStorageKey?: string;
+      type?: string;
+    }
+  ) =>
+    apiClient.post<{ message: Message }>('/webchat/messages', data, {
+      headers: { Authorization: `Bearer ${token}` },
+      skipAuthRedirect: true,
+    }),
+
+  sendTyping: (token: string, isTyping: boolean) =>
+    apiClient.post<{ success: boolean }>(
+      '/webchat/typing',
+      { isTyping },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        skipAuthRedirect: true,
+      }
+    ),
+
+  uploadMedia: (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post<{
+      key: string;
+      url: string;
+      filename: string;
+      contentType: string;
+      size: number;
+    }>('/webchat/upload', formData, {
+      headers: { Authorization: `Bearer ${token}` },
+      skipAuthRedirect: true,
+    });
+  },
+};

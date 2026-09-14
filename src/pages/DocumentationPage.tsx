@@ -98,10 +98,15 @@ export const DocumentationPage: React.FC = () => {
     'faq-5': false,
     'faq-6': false,
     'faq-7': false,
+    'faq-8': false,
   });
 
   // Code Tab Language State
   const [codeLanguage, setCodeLanguage] = useState<'curl' | 'javascript' | 'python' | 'php'>('curl');
+
+  // Interactive Webchat Platform & Simulator State
+  const [webchatEmbedPlatform, setWebchatEmbedPlatform] = useState<'html' | 'wordpress' | 'shopify' | 'nextjs' | 'webflow'>('html');
+  const [simWidgetKey, setSimWidgetKey] = useState('demo_wb_live_9a8f7c6e5d');
 
   // Interactive WhatsApp Template Simulator State
   const [simCustomerName, setSimCustomerName] = useState('Alex Morgan');
@@ -847,34 +852,425 @@ export const DocumentationPage: React.FC = () => {
               </div>
             </Card>
 
-            {/* Telegram & Webchat Widget Setup */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="p-5 bg-white border border-gray-200 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-sky-500 text-white flex items-center justify-center">
-                    <Send className="w-3.5 h-3.5" />
+            {/* Telegram Bot Setup */}
+            <Card className="p-6 bg-white border border-gray-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-sky-500 text-white flex items-center justify-center shadow-sm">
+                    <Send className="w-4 h-4" />
                   </div>
-                  <h4 className="text-xs font-bold text-gray-900">Telegram Bot Setup</h4>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900">Telegram Bot Gateway Integration</h3>
+                    <p className="text-[11px] text-gray-500">Connect automated customer support bots via Telegram BotFather API</p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  1. Message <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-primary-600 underline">@BotFather</a> on Telegram.<br />
-                  2. Send <code>/newbot</code> and follow prompts.<br />
-                  3. Paste the generated Bot Token into Omni Platform Channels page.
-                </p>
-              </Card>
+                <Badge variant="primary" size="sm">Instant Setup</Badge>
+              </div>
 
-              <Card className="p-5 bg-white border border-gray-200 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-primary-600 text-white flex items-center justify-center">
-                    <Globe className="w-3.5 h-3.5" />
-                  </div>
-                  <h4 className="text-xs font-bold text-gray-900">Live Webchat Widget</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
+                  <span className="font-bold text-gray-900 block">1. Open @BotFather</span>
+                  <p className="text-[11px] text-gray-600">
+                    Open Telegram and message <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-primary-600 underline font-semibold">@BotFather</a>.
+                  </p>
                 </div>
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  Embed live chat directly into your website header or footer by pasting our lightweight 1-line script tag with WebSocket support.
-                </p>
-              </Card>
-            </div>
+                <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
+                  <span className="font-bold text-gray-900 block">2. Run /newbot</span>
+                  <p className="text-[11px] text-gray-600">
+                    Type <code>/newbot</code>, choose a bot name and unique username ending in <code>bot</code>, and copy the API token.
+                  </p>
+                </div>
+                <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
+                  <span className="font-bold text-gray-900 block">3. Connect in Omni Platform</span>
+                  <p className="text-[11px] text-gray-600">
+                    Paste the Bot Token into Channels &gt; Connect Telegram. Webhooks are configured automatically.
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            {/* ========================================================================= */}
+            {/* LIVE WEBCHAT CHANNELS & 1-LINE WEBSITE EMBED INTEGRATION */}
+            {/* ========================================================================= */}
+            <Card className="p-6 bg-gradient-to-br from-indigo-50/60 via-white to-primary-50/40 border border-indigo-100 space-y-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-500/20">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-gray-900">Live Webchat Widget &amp; 1-Line Website Embed</h3>
+                      <Badge variant="primary" size="sm" className="bg-indigo-600 text-white font-semibold text-[10px]">
+                        Universal Embed
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      Embed real-time, zero-PII live chat on any website header or body in seconds with WebSocket streaming.
+                    </p>
+                  </div>
+                </div>
+                {isAuthenticated && (
+                  <Link to="/channels" className="shrink-0">
+                    <Button variant="primary" size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">
+                      Create Webchat Channel &rarr;
+                    </Button>
+                  </Link>
+                )}
+              </div>
+
+              {/* Step-by-Step Webchat Channel Creation Flow */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-indigo-600" />
+                  4-Step Webchat Channel Creation &amp; Deployment Flow
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {/* Step 1 */}
+                  <div className="p-4 bg-white rounded-xl border border-gray-200/90 shadow-2xs space-y-2 relative group hover:border-indigo-300 transition-colors">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                      1
+                    </div>
+                    <p className="font-bold text-gray-900 text-xs">Create Channel</p>
+                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                      Navigate to <strong>Channels</strong> &gt; switch to <strong>"Live Webchat Widgets"</strong> tab &gt; click <strong>"+ Create Webchat Widget"</strong>.
+                    </p>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="p-4 bg-white rounded-xl border border-gray-200/90 shadow-2xs space-y-2 relative group hover:border-indigo-300 transition-colors">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                      2
+                    </div>
+                    <p className="font-bold text-gray-900 text-xs">Customize Brand</p>
+                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                      Choose primary theme color, brand title, online subtitle, friendly greeting message, avatar logo, and launcher position (Bottom-Right or Bottom-Left).
+                    </p>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="p-4 bg-white rounded-xl border border-gray-200/90 shadow-2xs space-y-2 relative group hover:border-indigo-300 transition-colors">
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                      3
+                    </div>
+                    <p className="font-bold text-gray-900 text-xs">Security &amp; Domains</p>
+                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                      Restrict widget initialization to your verified domain names (e.g., <code>https://mybrand.com</code>) or leave as <code>*</code> for universal access.
+                    </p>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="p-4 bg-white rounded-xl border border-gray-200/90 shadow-2xs space-y-2 relative group hover:border-indigo-300 transition-colors">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                      4
+                    </div>
+                    <p className="font-bold text-gray-900 text-xs">Instant Script on Card</p>
+                    <p className="text-[11px] text-gray-600 leading-relaxed">
+                      Omni Platform displays the complete <code>&lt;script&gt;</code> embed snippet directly on the created widget card with a <strong>1-Click Copy</strong> button!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ready-to-Use Website Embed Script Banner */}
+              <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl border border-slate-800 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-4 h-4 text-indigo-400" />
+                    <span className="text-xs font-bold text-slate-200">The 1-Line Universal HTML Embed Snippet</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyCode('doc-main-webchat-script', `<script src="${window.location.origin}/api/webchat/embed.js?key=demo_wb_live_9a8f7c6e5d" async defer></script>`)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors cursor-pointer shrink-0"
+                  >
+                    {copiedCodeId === 'doc-main-webchat-script' ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedCodeId === 'doc-main-webchat-script' ? 'Copied to Clipboard!' : 'Copy Script Tag'}</span>
+                  </button>
+                </div>
+
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800/90 font-mono text-xs text-indigo-300 overflow-x-auto leading-relaxed select-all">
+                  <code>{`<script src="${window.location.origin}/api/webchat/embed.js?key=YOUR_WIDGET_KEY" async defer></script>`}</code>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-400 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Paste in website <code className="text-slate-300 font-mono">&lt;head&gt;</code> or <code className="text-slate-300 font-mono">&lt;body&gt;</code></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span><code className="text-slate-300 font-mono">async defer</code> non-blocking script</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Zero CSS or JS style conflicts</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Platform-Specific Integration Guides */}
+              <div className="space-y-4 pt-2 border-t border-indigo-100/80">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      Platform-Specific Installation Guides &amp; Snippets
+                    </h4>
+                    <p className="text-[11px] text-gray-500 mt-0.5">Select your website CMS, e-commerce platform, or frontend framework:</p>
+                  </div>
+
+                  {/* Platform Tab Switcher */}
+                  <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl border border-gray-200 text-xs overflow-x-auto">
+                    {[
+                      { id: 'html', label: 'HTML / Static' },
+                      { id: 'wordpress', label: 'WordPress / WooCommerce' },
+                      { id: 'shopify', label: 'Shopify' },
+                      { id: 'nextjs', label: 'Next.js & React' },
+                      { id: 'webflow', label: 'Webflow / Wix' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setWebchatEmbedPlatform(tab.id as any)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg font-semibold transition-all whitespace-nowrap cursor-pointer text-xs',
+                          webchatEmbedPlatform === tab.id
+                            ? 'bg-white text-indigo-600 shadow-xs'
+                            : 'text-gray-600 hover:text-gray-900'
+                        )}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tab 1: Plain HTML / Static Website */}
+                {webchatEmbedPlatform === 'html' && (
+                  <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="primary" size="sm">HTML5 / Static</Badge>
+                        <span className="text-xs font-bold text-gray-900">Vanilla HTML, PHP, Laravel, or Static Site</span>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode('html-embed-full', `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Website</title>
+  <!-- Omni Platform Live Webchat Widget -->
+  <script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>
+</head>
+<body>
+  <h1>Welcome to Our Store</h1>
+</body>
+</html>`)}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                      >
+                        {copiedCodeId === 'html-embed-full' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Full HTML Sample</span>
+                      </button>
+                    </div>
+                    <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1 leading-relaxed">
+                      <li>Open your website's root HTML file (e.g. <code>index.html</code>, <code>header.php</code>, or master template).</li>
+                      <li>Paste the <code>&lt;script&gt;</code> tag inside the <code>&lt;head&gt;</code> section or right above the closing <code>&lt;/body&gt;</code> tag.</li>
+                      <li>Save and refresh your browser. The live chat bubble will render in the bottom corner immediately!</li>
+                    </ol>
+                    <div className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
+                      <pre>{`<!-- Omni Platform Live Webchat Widget -->
+<script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>`}</pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 2: WordPress / WooCommerce */}
+                {webchatEmbedPlatform === 'wordpress' && (
+                  <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="purple" size="sm">WordPress / WooCommerce</Badge>
+                        <span className="text-xs font-bold text-gray-900">WordPress Header &amp; Footer Integration</span>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode('wp-embed-php', `// Add this snippet to your child theme's functions.php file
+add_action('wp_head', function() {
+    ?>
+    <!-- Omni Platform Live Webchat Widget -->
+    <script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>
+    <?php
+});`)}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                      >
+                        {copiedCodeId === 'wp-embed-php' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy functions.php Code</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1.5">
+                        <p className="font-bold text-gray-900">Method A: Using WPCode Plugin (Easiest)</p>
+                        <ol className="list-decimal list-inside text-gray-600 space-y-1 text-[11px]">
+                          <li>Install the free <strong>"WPCode"</strong> (Insert Headers and Footers) plugin.</li>
+                          <li>Go to <strong>Code Snippets &gt; Header &amp; Footer</strong> in WP Admin.</li>
+                          <li>Paste the embed script into the <strong>Header</strong> box and click <strong>Save Changes</strong>.</li>
+                        </ol>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1.5">
+                        <p className="font-bold text-gray-900">Method B: Child Theme functions.php</p>
+                        <p className="text-gray-600 text-[11px]">
+                          Add a WordPress action hook into your active child theme's <code>functions.php</code> file:
+                        </p>
+                      </div>
+                    </div>
+                    <div className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
+                      <pre>{`add_action('wp_head', function() {
+    ?>
+    <script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>
+    <?php
+});`}</pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 3: Shopify */}
+                {webchatEmbedPlatform === 'shopify' && (
+                  <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="success" size="sm">Shopify</Badge>
+                        <span className="text-xs font-bold text-gray-900">Liquid Theme Layout Integration</span>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode('shopify-embed-code', `<!-- Omni Platform Webchat on Shopify -->\n<script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>`)}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                      >
+                        {copiedCodeId === 'shopify-embed-code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Liquid Snippet</span>
+                      </button>
+                    </div>
+                    <ol className="list-decimal list-inside text-xs text-gray-600 space-y-1.5 leading-relaxed">
+                      <li>In your Shopify Admin dashboard, go to <strong>Online Store &gt; Themes</strong>.</li>
+                      <li>Click <strong>... (Actions) &gt; Edit code</strong> next to your published theme.</li>
+                      <li>In the file tree under <strong>Layout</strong>, click <code>theme.liquid</code>.</li>
+                      <li>Scroll to the bottom of the file and paste the snippet right above the closing <code>&lt;/body&gt;</code> or <code>&lt;/head&gt;</code> tag.</li>
+                      <li>Click <strong>Save</strong>. The webchat will immediately be active across all product and checkout pages!</li>
+                    </ol>
+                    <div className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
+                      <pre>{`<!-- Shopify theme.liquid Layout -->
+<script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>`}</pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 4: Next.js & React */}
+                {webchatEmbedPlatform === 'nextjs' && (
+                  <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="purple" size="sm">Next.js &amp; React</Badge>
+                        <span className="text-xs font-bold text-gray-900">App Router &amp; Pages Router next/script</span>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode('nextjs-embed-code', `// app/layout.tsx (Next.js App Router)
+import Script from 'next/script';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <Script
+          src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}"
+          strategy="lazyOnload"
+        />
+      </body>
+    </html>
+  );
+}`)}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                      >
+                        {copiedCodeId === 'nextjs-embed-code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Next.js layout.tsx</span>
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      For optimal performance and zero impact on First Contentful Paint (FCP), use Next.js's built-in <code>next/script</code> component with <code>strategy="lazyOnload"</code>:
+                    </p>
+                    <div className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto border border-slate-800">
+                      <pre>{`// app/layout.tsx (Next.js 13/14/15 App Router)
+import Script from 'next/script';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        {children}
+        <Script
+          src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}"
+          strategy="lazyOnload"
+        />
+      </body>
+    </html>
+  );
+}`}</pre>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 5: Webflow & No-Code CMS */}
+                {webchatEmbedPlatform === 'webflow' && (
+                  <div className="p-4 bg-white rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" size="sm">Webflow / Wix / Squarespace</Badge>
+                        <span className="text-xs font-bold text-gray-900">Custom Code Header Injection</span>
+                      </div>
+                      <button
+                        onClick={() => handleCopyCode('webflow-embed-code', `<script src="${window.location.origin}/api/webchat/embed.js?key=${simWidgetKey}" async defer></script>`)}
+                        className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                      >
+                        {copiedCodeId === 'webflow-embed-code' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>Copy Snippet</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
+                        <p className="font-bold text-gray-900">Webflow Instructions</p>
+                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                          Open <strong>Project Settings &gt; Custom Code</strong>. In the <strong>Head Code</strong> or <strong>Footer Code</strong> box, paste the script and click <strong>Save &amp; Publish</strong>.
+                        </p>
+                      </div>
+                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
+                        <p className="font-bold text-gray-900">Wix &amp; Squarespace Instructions</p>
+                        <p className="text-[11px] text-gray-600 leading-relaxed">
+                          In your site dashboard, navigate to <strong>Settings &gt; Custom Code</strong>, click <strong>+ Add Custom Code</strong>, paste the script, and select <strong>Apply to All Pages &gt; Head</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Technical Under-the-Hood Specs */}
+              <div className="p-4 bg-slate-900 text-slate-200 rounded-2xl space-y-2.5 font-mono text-[11px]">
+                <div className="flex items-center justify-between text-slate-400 font-sans font-semibold text-xs border-b border-slate-800 pb-1.5">
+                  <span className="flex items-center gap-1.5 text-indigo-400">
+                    <Shield className="w-3.5 h-3.5" />
+                    Webchat Technical Architecture &amp; Privacy Shield
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Isolated Iframe &amp; postMessage</span>
+                </div>
+                <div className="space-y-1.5 text-slate-300">
+                  <p><span className="text-indigo-400 font-bold">1. Sandboxed Iframe:</span> Script dynamically mounts an isolated iframe with zero style leakage or DOM pollution on your host website.</p>
+                  <p><span className="text-emerald-400 font-bold">2. Responsive postMessage:</span> Dispatches <code>omni-webchat-resize</code> events to smoothly expand from a 70x70px launcher bubble to a 420x680px chat container.</p>
+                  <p><span className="text-primary-400 font-bold">3. Zero-PII Visitor JWT:</span> Issues a 30-day stateless visitor token (<code>role: 'visitor'</code>) for conversation persistence without database bloat.</p>
+                  <p><span className="text-amber-400 font-bold">4. Strict Zero-Leak Notes:</span> Internal staff notes (<code>is_internal: true</code>) are scrubbed at the socket layer and NEVER transmitted to webchat visitors.</p>
+                </div>
+              </div>
+            </Card>
           </section>
 
           {/* ========================================================================= */}
@@ -1554,6 +1950,12 @@ echo $response;`}
                   question: 'How do I download official PDF receipts and invoices for tax reporting?',
                   answer:
                     'Navigate to Settings & Scale > Invoices & Billing History. Click "View Receipt" next to any paid invoice to inspect line items, breakdown taxes, and click "Print / Download PDF" for your accounting ledger.',
+                },
+                {
+                  id: 'faq-8',
+                  question: 'Can I restrict which websites are allowed to embed my Live Webchat widget?',
+                  answer:
+                    'Yes. When configuring or editing your Webchat channel, enter your authorized domain origins (e.g., https://mycompany.com, https://store.mycompany.com) in the "Allowed Domains" field. The widget script will verify the requesting hostname and refuse to load on unauthorized third-party websites to protect your account and message quota.',
                 },
               ].map((faq) => (
                 <Card

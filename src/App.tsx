@@ -28,6 +28,7 @@ import { DocumentationPage } from './pages/DocumentationPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
+import { WebchatStandalonePage } from './pages/WebchatStandalonePage';
 import { Spinner } from './components/common/Tabs';
 
 // Protected Route wrapper
@@ -105,6 +106,9 @@ function App() {
             <Route path="/documentation" element={<DocumentationPage />} />
             <Route path="/guide" element={<DocumentationPage />} />
             <Route path="/manual" element={<DocumentationPage />} />
+
+            {/* Public Live Webchat Standalone Route */}
+            <Route path="/chat/:widgetKey" element={<WebchatStandalonePage />} />
 
             {/* Protected Routes */}
             <Route

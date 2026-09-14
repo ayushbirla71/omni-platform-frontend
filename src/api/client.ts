@@ -2,6 +2,7 @@ const API_BASE_URL = '/api';
 
 interface ApiRequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined | null>;
+  skipAuthRedirect?: boolean;
 }
 
 class ApiClient {
@@ -58,7 +59,7 @@ class ApiClient {
       }
     }
 
-    if (this.token) {
+    if (this.token && !headers['Authorization']) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
@@ -71,11 +72,18 @@ class ApiClient {
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
-      this.setToken(null);
-      if (this.onUnauthorized) {
-        this.onUnauthorized();
+      if (!options.skipAuthRedirect && !options.headers?.['Authorization' as keyof HeadersInit]) {
+        this.setToken(null);
+        if (this.onUnauthorized) {
+          this.onUnauthorized();
+        }
       }
-      throw new Error('Unauthorized - please log in again');
+      let errorMsg = 'Unauthorized - please log in again';
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.error || errorData.message || errorMsg;
+      } catch {}
+      throw new Error(errorMsg);
     }
 
     // Handle other error responses
@@ -98,35 +106,57 @@ class ApiClient {
     return response.json();
   }
 
-  async get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>): Promise<T> {
-    return this.request<T>(endpoint, { method: 'GET', params });
+  async get<T>(
+    endpoint: string,
+    params?: Record<string, string | number | boolean | undefined | null>,
+    options?: Omit<ApiRequestOptions, 'params' | 'method'>
+  ): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET', params, ...options });
   }
 
-  async post<T>(endpoint: string, data?: any): Promise<T> {
+  async post<T>(
+    endpoint: string,
+    data?: any,
+    options?: Omit<ApiRequestOptions, 'body' | 'method'>
+  ): Promise<T> {
     const isFormData = data instanceof FormData;
     return this.request<T>(endpoint, {
       method: 'POST',
       body: isFormData ? data : data ? JSON.stringify(data) : undefined,
+      ...options,
     });
   }
 
-  async put<T>(endpoint: string, data?: any): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    data?: any,
+    options?: Omit<ApiRequestOptions, 'body' | 'method'>
+  ): Promise<T> {
     const isFormData = data instanceof FormData;
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: isFormData ? data : data ? JSON.stringify(data) : undefined,
+      ...options,
     });
   }
 
-  async patch<T>(endpoint: string, data?: any): Promise<T> {
+  async patch<T>(
+    endpoint: string,
+    data?: any,
+    options?: Omit<ApiRequestOptions, 'body' | 'method'>
+  ): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PATCH',
       body: data ? JSON.stringify(data) : undefined,
+      ...options,
     });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(
+    endpoint: string,
+    options?: Omit<ApiRequestOptions, 'method'>
+  ): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE', ...options });
   }
 }
 

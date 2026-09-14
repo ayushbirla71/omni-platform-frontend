@@ -31,6 +31,8 @@ import {
   Clock,
   AlertTriangle,
   FileCheck,
+  Globe,
+  MessageCircle,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -350,7 +352,10 @@ export const InboxPage: React.FC = () => {
       // If active conversation matches, append message
       if (convId === selectedConvId) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
+          const incId = msg.id || (msg as any)._id;
+          if (prev.some((m) => (m.id && m.id === incId) || ((m as any)._id && (m as any)._id === incId))) {
+            return prev;
+          }
           return [...prev, msg];
         });
         setTimeout(scrollToBottom, 50);
@@ -569,7 +574,13 @@ export const InboxPage: React.FC = () => {
 
     try {
       const sentMsg = await conversationsApi.sendMedia(selectedConvId, formData);
-      setMessages((prev) => [...prev, sentMsg]);
+      setMessages((prev) => {
+        const targetId = sentMsg.id || (sentMsg as any)._id;
+        if (prev.some((m) => (m.id && m.id === targetId) || ((m as any)._id && (m as any)._id === targetId))) {
+          return prev;
+        }
+        return [...prev, sentMsg];
+      });
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selectedConvId
@@ -682,7 +693,13 @@ export const InboxPage: React.FC = () => {
         headerValue: finalHeaderValue,
       });
 
-      setMessages((prev) => [...prev, sentMsg]);
+      setMessages((prev) => {
+        const targetId = sentMsg.id || (sentMsg as any)._id;
+        if (prev.some((m) => (m.id && m.id === targetId) || ((m as any)._id && (m as any)._id === targetId))) {
+          return prev;
+        }
+        return [...prev, sentMsg];
+      });
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selectedConvId
@@ -719,7 +736,13 @@ export const InboxPage: React.FC = () => {
 
     try {
       const sentMsg = await conversationsApi.sendMessage(selectedConvId, textToSend);
-      setMessages((prev) => [...prev, sentMsg]);
+      setMessages((prev) => {
+        const targetId = sentMsg.id || (sentMsg as any)._id;
+        if (prev.some((m) => (m.id && m.id === targetId) || ((m as any)._id && (m as any)._id === targetId))) {
+          return prev;
+        }
+        return [...prev, sentMsg];
+      });
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selectedConvId
@@ -1386,6 +1409,7 @@ export const InboxPage: React.FC = () => {
               <option value="all">All Channels</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="telegram">Telegram</option>
+              <option value="webchat">Live Webchat</option>
             </select>
           </div>
         </div>
@@ -1421,10 +1445,14 @@ export const InboxPage: React.FC = () => {
                     <span
                       className={cn(
                         'absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] text-white font-bold ring-2 ring-white',
-                        conv.channelType === 'whatsapp' ? 'bg-emerald-500' : 'bg-blue-500'
+                        conv.channelType === 'whatsapp'
+                          ? 'bg-emerald-500'
+                          : conv.channelType === 'telegram'
+                          ? 'bg-blue-500'
+                          : 'bg-indigo-600'
                       )}
                     >
-                      {conv.channelType === 'whatsapp' ? 'W' : 'T'}
+                      {conv.channelType === 'whatsapp' ? 'W' : conv.channelType === 'telegram' ? 'T' : '💬'}
                     </span>
                   </div>
 
@@ -1502,8 +1530,21 @@ export const InboxPage: React.FC = () => {
                     <h3 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
                       {activeConversation.contactName || activeConversation.contactExternalId}
                     </h3>
-                    <Badge variant={activeConversation.channelType === 'whatsapp' ? 'success' : 'primary'} size="sm" className="text-[10px] px-1.5 py-0 shrink-0">
-                      {activeConversation.channelType}
+                    <Badge
+                      variant={
+                        activeConversation.channelType === 'whatsapp'
+                          ? 'success'
+                          : activeConversation.channelType === 'telegram'
+                          ? 'primary'
+                          : 'secondary'
+                      }
+                      size="sm"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0 shrink-0",
+                        activeConversation.channelType === 'webchat' && "bg-indigo-50 text-indigo-700 border-indigo-200"
+                      )}
+                    >
+                      {activeConversation.channelType === 'webchat' ? 'Live Webchat' : activeConversation.channelType}
                     </Badge>
                   </div>
                   <p className="text-[10px] sm:text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5 truncate">
