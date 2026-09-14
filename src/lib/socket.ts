@@ -69,9 +69,11 @@ export class RealtimeClient {
       const host = window.location.host;
       const wsUrl = `${protocol}//${host}/ws?token=${encodeURIComponent(token)}`;
 
-      this.socket = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
+      this.socket = ws;
 
-      this.socket.onopen = () => {
+      ws.onopen = () => {
+        if (this.socket !== ws) return;
         this.setStatus('connected');
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -85,7 +87,8 @@ export class RealtimeClient {
         });
       };
 
-      this.socket.onmessage = (event) => {
+      ws.onmessage = (event) => {
+        if (this.socket !== ws) return;
         try {
           const payload = JSON.parse(event.data);
           if (payload.type === 'event' && payload.event) {
@@ -98,7 +101,8 @@ export class RealtimeClient {
         }
       };
 
-      this.socket.onclose = (event) => {
+      ws.onclose = () => {
+        if (this.socket !== ws) return;
         this.stopHeartbeat();
         this.setStatus('disconnected');
         if (!this.isExplicitlyClosed) {
@@ -106,10 +110,11 @@ export class RealtimeClient {
         }
       };
 
-      this.socket.onerror = (err) => {
+      ws.onerror = (err) => {
+        if (this.socket !== ws) return;
         console.warn('[RealtimeClient] WebSocket error:', err);
-        if (this.socket) {
-          this.socket.close();
+        if (ws.readyState === WebSocket.OPEN) {
+          try { ws.close(); } catch {}
         }
       };
     } catch (err) {
@@ -126,8 +131,27 @@ export class RealtimeClient {
       this.reconnectTimeout = null;
     }
     if (this.socket) {
-      this.socket.close();
+      const currentSocket = this.socket;
       this.socket = null;
+
+      // Nullify active event listeners to prevent unhandled close events or race conditions
+      currentSocket.onmessage = null;
+      currentSocket.onerror = null;
+      currentSocket.onclose = null;
+
+      if (currentSocket.readyState === WebSocket.OPEN) {
+        try {
+          currentSocket.close(1000, 'Client disconnected');
+        } catch {}
+      } else if (currentSocket.readyState === WebSocket.CONNECTING) {
+        // Defer close until open to prevent browser console warning:
+        // "WebSocket is closed before the connection is established"
+        currentSocket.onopen = () => {
+          try {
+            currentSocket.close(1000, 'Client disconnected');
+          } catch {}
+        };
+      }
     }
     this.setStatus('disconnected');
   }

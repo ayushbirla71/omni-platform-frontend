@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { realtimeClient, ConnectionStatus, RealtimeEventHandler } from '../lib/socket';
 import { useAuth } from '../context/AuthContext';
+import { apiClient } from '../api/client';
 
 export function useWebSocket() {
   const { user } = useAuth();
   const [status, setStatus] = useState<ConnectionStatus>(realtimeClient.getStatus());
 
   useEffect(() => {
-    if (user) {
+    // If user or token exists and client is disconnected, ensure connection is active
+    if (user || apiClient.getToken()) {
       realtimeClient.connect();
-    } else {
-      realtimeClient.disconnect();
     }
 
     const unsubscribe = realtimeClient.onStatusChange(setStatus);

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { realtimeClient, ConnectionStatus } from '../lib/socket';
+import { apiClient } from '../api/client';
 import type { AppNotification, NotificationType, Message, Conversation } from '../types';
 
 interface NotificationContextType {
@@ -129,7 +130,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Sync WebSocket connection with user state
   useEffect(() => {
-    if (user) {
+    const token = apiClient.getToken();
+    if (user || token) {
       realtimeClient.connect();
     } else {
       realtimeClient.disconnect();

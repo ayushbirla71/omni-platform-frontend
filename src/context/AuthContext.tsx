@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../api/client';
 import { authApi } from '../api';
+import { realtimeClient } from '../lib/socket';
 import type { User, UserProfile, UpdateProfileData } from '../types';
 
 interface AuthContextType {
@@ -161,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    realtimeClient.disconnect();
     setUser(null);
     setTokenState(null);
     apiClient.setToken(null);
