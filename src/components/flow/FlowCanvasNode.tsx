@@ -14,7 +14,6 @@ import {
   ArrowRight,
   Sparkles,
   Repeat,
-  Layers,
   Trash2,
   Edit2,
   Flag,

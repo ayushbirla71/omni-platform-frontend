@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   BookOpen,
@@ -270,17 +270,106 @@ export const DocumentationPage: React.FC = () => {
   const completedStepsCount = Object.values(checkedSteps).filter(Boolean).length;
   const checklistPercentage = Math.round((completedStepsCount / 5) * 100);
 
-  // Scroll to section handler
+  const isManualScrollingRef = useRef(false);
+  const manualScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sidebarNavRef = useRef<HTMLElement | null>(null);
+
+  // Scroll to section handler with smooth offset
   const scrollToSection = (id: string) => {
     setActiveSectionId(id);
+    isManualScrollingRef.current = true;
+    if (manualScrollTimerRef.current) {
+      clearTimeout(manualScrollTimerRef.current);
+    }
+
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const navOffset = 90;
+      const elementPosition = element.getBoundingClientRect().top + window.scrollY;
+      const offsetPosition = Math.max(0, elementPosition - navOffset);
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth',
+      });
     }
+
+    manualScrollTimerRef.current = setTimeout(() => {
+      isManualScrollingRef.current = false;
+    }, 800);
   };
 
+  // Scroll Spy: dynamically highlight active chapter in the sidebar as user scrolls the document
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isManualScrollingRef.current) return;
+      if (filteredSections.length === 0) return;
+
+      // Check if user has reached bottom of the page
+      const isAtBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60;
+      if (isAtBottom) {
+        const lastSection = filteredSections[filteredSections.length - 1];
+        if (lastSection) {
+          setActiveSectionId(lastSection.id);
+        }
+        return;
+      }
+
+      // Detection threshold from top of viewport (e.g. 140px below top navigation)
+      const topThreshold = 140;
+      let currentSectionId = filteredSections[0]?.id;
+
+      for (const sec of filteredSections) {
+        const el = document.getElementById(sec.id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          // If section top has scrolled past or is near the threshold
+          if (rect.top <= topThreshold) {
+            currentSectionId = sec.id;
+          }
+        }
+      }
+
+      if (currentSectionId) {
+        setActiveSectionId(currentSectionId);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    // Run on mount or search filter change
+    handleScroll();
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (manualScrollTimerRef.current) {
+        clearTimeout(manualScrollTimerRef.current);
+      }
+    };
+  }, [filteredSections]);
+
+  // Keep active sidebar button visible inside the sidebar scroll container
+  useEffect(() => {
+    if (activeSectionId && sidebarNavRef.current) {
+      const activeBtn = sidebarNavRef.current.querySelector<HTMLElement>(
+        `[data-section-id="${activeSectionId}"]`
+      );
+      if (activeBtn) {
+        const container = sidebarNavRef.current;
+        const btnTop = activeBtn.offsetTop;
+        const btnHeight = activeBtn.offsetHeight;
+        const containerScrollTop = container.scrollTop;
+        const containerHeight = container.clientHeight;
+
+        if (btnTop < containerScrollTop || btnTop + btnHeight > containerScrollTop + containerHeight) {
+          activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    }
+  }, [activeSectionId]);
+
   return (
-    <div className={cn("space-y-8 pb-16 max-w-7xl mx-auto", !isAuthenticated && "px-4 sm:px-6 pt-6")}>
+    <div className={cn("space-y-8 pb-16 pt-2 sm:pt-4 max-w-7xl mx-auto", !isAuthenticated && "px-4 sm:px-6 pt-6 sm:pt-8")}>
       {/* Unauthenticated Top Navigation Bar */}
       {!isAuthenticated && (
         <div className="flex items-center justify-between p-4 rounded-2xl bg-white border border-gray-200/80 shadow-xs mb-6">
@@ -429,13 +518,14 @@ export const DocumentationPage: React.FC = () => {
               </Badge>
             </div>
 
-            <nav className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
+            <nav ref={sidebarNavRef} className="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
               {filteredSections.map((sec) => {
                 const Icon = sec.icon;
                 const isActive = activeSectionId === sec.id;
                 return (
                   <button
                     key={sec.id}
+                    data-section-id={sec.id}
                     onClick={() => scrollToSection(sec.id)}
                     className={cn(
                       'w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-left transition-all group',

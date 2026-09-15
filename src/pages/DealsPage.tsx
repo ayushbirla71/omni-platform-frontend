@@ -303,7 +303,7 @@ export const DealsPage: React.FC = () => {
                   </div>
 
                   {/* Deal Cards */}
-                  <div className="space-y-3 min-h-[200px]">
+                  <div className="space-y-3 min-h-[200px] max-h-[calc(100vh-22rem)] overflow-y-auto pr-1">
                     {stageDeals.length === 0 ? (
                       <div className="p-6 rounded-2xl border-2 border-dashed border-gray-200 text-center text-xs text-gray-400">
                         No deals in {stage}

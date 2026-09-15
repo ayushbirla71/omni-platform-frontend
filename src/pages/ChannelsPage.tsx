@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Radio,
   Plus,
@@ -9,8 +9,6 @@ import {
   ExternalLink,
   CheckCircle2,
   Copy,
-  Download,
-  AlertCircle,
   AlertTriangle,
   HelpCircle,
   RefreshCw,
@@ -20,7 +18,6 @@ import {
   ShieldCheck,
   ChevronDown,
   ChevronUp,
-  Loader2,
   Settings,
   Trash2,
   Phone,
@@ -33,9 +30,6 @@ import {
   MessageCircle,
   Palette,
   Code,
-  Share2,
-  Check,
-  Layers,
 } from 'lucide-react';
 import { channelsApi, whatsappOnboardingApi, flowsApi, webchatApi } from '../api';
 import {
@@ -47,14 +41,12 @@ import {
   Flow,
   DeepLinkResponse,
   WebchatWidget as IWebchatWidget,
-  WebchatBusinessHours,
-  PublicWidgetConfig,
 } from '../types';
 import { WebchatWidget as LiveWebchatWidgetPreview } from '../components/webchat/WebchatWidget';
 import { cn } from '../lib/utils';
 import { getTierInfo, ALL_TIERS } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
-import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
+import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
@@ -93,7 +85,6 @@ export const ChannelsPage: React.FC = () => {
   const [editingWidget, setEditingWidget] = useState<IWebchatWidget | null>(null);
   const [isEmbedModalOpen, setIsEmbedModalOpen] = useState(false);
   const [selectedWidgetForEmbed, setSelectedWidgetForEmbed] = useState<IWebchatWidget | null>(null);
-  const [embedModalTab, setEmbedModalTab] = useState<'script' | 'link' | 'iframe'>('script');
   const [isDeleteWidgetModalOpen, setIsDeleteWidgetModalOpen] = useState(false);
   const [widgetToDelete, setWidgetToDelete] = useState<IWebchatWidget | null>(null);
   const [isDeletingWidget, setIsDeletingWidget] = useState(false);
@@ -725,7 +716,6 @@ export const ChannelsPage: React.FC = () => {
 
   const handleOpenEmbedModal = (widget: IWebchatWidget) => {
     setSelectedWidgetForEmbed(widget);
-    setEmbedModalTab('script');
     setIsEmbedModalOpen(true);
   };
 
@@ -1056,12 +1046,13 @@ export const ChannelsPage: React.FC = () => {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                    <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100">
                       <Button
                         variant="outline"
                         size="sm"
+                        className="w-full text-xs justify-center"
                         onClick={() => handleOpenSettingsModal(channel)}
-                        icon={<Settings className="w-3.5 h-3.5 text-gray-600" />}
+                        icon={<Settings className="w-3.5 h-3.5 text-gray-600 shrink-0" />}
                         title="Channel Settings & Status"
                       >
                         Settings
@@ -1070,9 +1061,9 @@ export const ChannelsPage: React.FC = () => {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1"
+                        className="w-full text-xs justify-center"
                         onClick={() => handleOpenQrModal(channel)}
-                        icon={<QrCode className="w-3.5 h-3.5 text-gray-600" />}
+                        icon={<QrCode className="w-3.5 h-3.5 text-gray-600 shrink-0" />}
                       >
                         QR & Link
                       </Button>
@@ -1081,9 +1072,9 @@ export const ChannelsPage: React.FC = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1"
+                          className="w-full text-xs justify-center"
                           onClick={() => handleOpenTemplatesModal(channel)}
-                          icon={<FileText className="w-3.5 h-3.5 text-gray-600" />}
+                          icon={<FileText className="w-3.5 h-3.5 text-gray-600 shrink-0" />}
                         >
                           Templates
                         </Button>
@@ -1093,10 +1084,14 @@ export const ChannelsPage: React.FC = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenDisconnectModal(channel)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-gray-200 hover:border-red-200"
+                        className={cn(
+                          "w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-gray-200 hover:border-red-200 text-xs justify-center",
+                          channel.type !== 'whatsapp' && "col-span-2"
+                        )}
                         title="Disconnect Channel"
+                        icon={<Trash2 className="w-3.5 h-3.5 shrink-0" />}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        Disconnect
                       </Button>
                     </div>
                   </Card>
@@ -1165,25 +1160,31 @@ export const ChannelsPage: React.FC = () => {
                   <Card
                     key={widget.id}
                     className={cn(
-                      'flex flex-col justify-between hover:shadow-md transition-all border',
+                      'flex flex-col justify-between hover:shadow-md transition-all border overflow-hidden',
                       widget.isActive ? 'border-gray-200' : 'border-gray-200 opacity-80 bg-gray-50/50'
                     )}
                   >
-                    <div className="space-y-4">
+                    <div className="space-y-4 min-w-0">
                       {/* Header: Icon, Name & Status */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div
                             className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-sm shrink-0"
                             style={{ backgroundColor: widget.primaryColor || '#4f46e5' }}
                           >
                             <MessageCircle className="w-5 h-5" />
                           </div>
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-bold text-gray-900 truncate">
+                          <div className="min-w-0 flex-1">
+                            <h4
+                              className="text-sm font-bold text-gray-900 truncate"
+                              title={widget.displayName || widget.channelDisplayName || widget.channel?.displayName || widget.title || 'Live Chat'}
+                            >
                               {widget.displayName || widget.channelDisplayName || widget.channel?.displayName || widget.title || 'Live Chat'}
                             </h4>
-                            <p className="text-xs text-gray-500 truncate">
+                            <p
+                              className="text-xs text-gray-500 truncate"
+                              title={widget.title ? `${widget.title} • ${widget.subtitle || 'Live Chat'}` : (widget.subtitle || 'Webchat Widget')}
+                            >
                               {widget.title ? `${widget.title} • ${widget.subtitle || 'Live Chat'}` : (widget.subtitle || 'Webchat Widget')}
                             </p>
                           </div>
@@ -1191,13 +1192,13 @@ export const ChannelsPage: React.FC = () => {
 
                         <button
                           onClick={() => handleToggleWidgetActive(widget)}
-                          className="shrink-0 cursor-pointer"
+                          className="shrink-0 cursor-pointer inline-flex items-center"
                           title={widget.isActive ? 'Click to deactivate widget' : 'Click to activate widget'}
                         >
                           <Badge
                             variant={widget.isActive ? 'success' : 'secondary'}
                             size="sm"
-                            className="cursor-pointer"
+                            className="cursor-pointer whitespace-nowrap select-none"
                           >
                             {widget.isActive ? 'Active' : 'Inactive'}
                           </Badge>
@@ -1205,22 +1206,35 @@ export const ChannelsPage: React.FC = () => {
                       </div>
 
                       {/* Widget Key & Quick Links */}
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                            Widget Key
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <code className="font-mono text-[11px] font-semibold text-gray-800 bg-white px-1.5 py-0.5 rounded border border-gray-200">
-                              {widget.widgetKey}
-                            </code>
+                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2.5 text-xs min-w-0">
+                        {/* Widget Key */}
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                            <span>Widget Key</span>
                             <button
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(widget.widgetKey);
                                 showToast('Widget key copied to clipboard', 'success');
                               }}
-                              className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 font-semibold cursor-pointer lowercase"
+                              title="Copy Widget Key"
+                            >
+                              <Copy className="w-2.5 h-2.5" />
+                              copy
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-gray-200 font-mono text-[11px] text-gray-800 gap-2 min-w-0 shadow-xs">
+                            <span className="truncate flex-1 font-semibold select-all" title={widget.widgetKey}>
+                              {widget.widgetKey}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(widget.widgetKey);
+                                showToast('Widget key copied to clipboard', 'success');
+                              }}
+                              className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors cursor-pointer shrink-0"
                               title="Copy Widget Key"
                             >
                               <Copy className="w-3 h-3" />
@@ -1229,11 +1243,11 @@ export const ChannelsPage: React.FC = () => {
                         </div>
 
                         {/* Standalone URL */}
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/60">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 min-w-0">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider shrink-0">
                             Direct Link
                           </span>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <a
                               href={`/chat/${widget.widgetKey}`}
                               target="_blank"
@@ -1259,17 +1273,17 @@ export const ChannelsPage: React.FC = () => {
                         </div>
 
                         {/* Allowed Origins / Position */}
-                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 text-[11px] text-gray-600">
-                          <span className="text-gray-500">Position:</span>
-                          <span className="font-medium text-gray-800 capitalize">
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 text-[11px] text-gray-600 min-w-0">
+                          <span className="text-gray-500 shrink-0">Position:</span>
+                          <span className="font-medium text-gray-800 capitalize truncate">
                             {widget.position?.replace('-', ' ') || 'Bottom Right'}
                           </span>
                         </div>
 
                         {widget.businessHours?.enabled && (
-                          <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 text-[11px] text-gray-600">
-                            <span className="text-gray-500">Business Hours:</span>
-                            <Badge variant="purple" size="sm" className="text-[10px] py-0">
+                          <div className="flex items-center justify-between pt-1 border-t border-gray-200/60 text-[11px] text-gray-600 min-w-0">
+                            <span className="text-gray-500 shrink-0">Business Hours:</span>
+                            <Badge variant="purple" size="sm" className="text-[10px] py-0 shrink-0">
                               {widget.businessHours.timezone || 'Active'}
                             </Badge>
                           </div>
@@ -1329,22 +1343,23 @@ export const ChannelsPage: React.FC = () => {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-4">
+                    <div className="grid grid-cols-2 gap-2 pt-3 border-t border-gray-100 mt-4">
                       <Button
                         variant="primary"
                         size="sm"
-                        className="flex-1"
+                        className="col-span-2 w-full text-xs justify-center"
                         onClick={() => handleOpenEmbedModal(widget)}
-                        icon={<Code className="w-3.5 h-3.5" />}
+                        icon={<Code className="w-3.5 h-3.5 shrink-0" />}
                       >
-                        Embed Code
+                        Get Embed Code & Link
                       </Button>
 
                       <Button
                         variant="outline"
                         size="sm"
+                        className="w-full text-xs justify-center"
                         onClick={() => handleOpenEditWidgetModal(widget)}
-                        icon={<Settings className="w-3.5 h-3.5 text-gray-600" />}
+                        icon={<Settings className="w-3.5 h-3.5 text-gray-600 shrink-0" />}
                         title="Customize Widget Style & Copy"
                       >
                         Customize
@@ -1354,10 +1369,11 @@ export const ChannelsPage: React.FC = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleOpenDeleteWidgetModal(widget)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 border-gray-200 hover:border-red-200"
+                        className="w-full text-red-600 hover:text-red-700 hover:bg-red-50 border-gray-200 hover:border-red-200 text-xs justify-center"
                         title="Delete Webchat Widget"
+                        icon={<Trash2 className="w-3.5 h-3.5 shrink-0 text-red-600" />}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
                       </Button>
                     </div>
                   </Card>

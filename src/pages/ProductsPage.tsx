@@ -300,7 +300,7 @@ export const ProductsPage: React.FC = () => {
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[calc(100vh-20rem)] overflow-y-auto pr-1">
           {products.map((product) => {
             const isAvail = product.isAvailable ?? product.is_available ?? true;
             const stockQty = product.inventoryQuantity ?? product.inventory_quantity ?? 0;

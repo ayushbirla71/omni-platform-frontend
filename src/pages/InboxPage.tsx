@@ -34,6 +34,7 @@ import {
   Globe,
   MessageCircle,
   Bot,
+  PanelRightClose,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -111,6 +112,40 @@ export const InboxPage: React.FC = () => {
   // Media Attachment Upload Modal State
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+
+  // Collapsible Deals & AI Copilot Right Panel State (Default collapsed on laptop/smaller screens < 1440px)
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('omni_inbox_right_panel_collapsed');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return typeof window !== 'undefined' ? window.innerWidth < 1440 : true;
+  });
+
+  const toggleRightPanel = (tab?: 'crm' | 'copilot') => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      if (tab) setRightPaneTab(tab);
+      setIsMobileDrawerOpen(true);
+      return;
+    }
+    if (tab) {
+      setRightPaneTab(tab);
+      if (!isRightPanelCollapsed && rightPaneTab === tab) {
+        setIsRightPanelCollapsed(true);
+        try { localStorage.setItem('omni_inbox_right_panel_collapsed', 'true'); } catch {}
+      } else {
+        setIsRightPanelCollapsed(false);
+        try { localStorage.setItem('omni_inbox_right_panel_collapsed', 'false'); } catch {}
+      }
+    } else {
+      setIsRightPanelCollapsed((prev) => {
+        const next = !prev;
+        try { localStorage.setItem('omni_inbox_right_panel_collapsed', String(next)); } catch {}
+        return next;
+      });
+    }
+  };
+
   const [selectedMediaFile, setSelectedMediaFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [mediaCaption, setMediaCaption] = useState('');
@@ -814,31 +849,48 @@ export const InboxPage: React.FC = () => {
 
     return (
       <div className="space-y-4">
-        {/* Dual-Tab Navigation: Profile & CRM vs AI Copilot */}
-        <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl border border-gray-200/60">
+        {/* Dual-Tab Navigation: Profile & CRM vs AI Copilot + Collapse Toggle */}
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl border border-gray-200/60 flex-1 min-w-0">
+            <button
+              type="button"
+              onClick={() => setRightPaneTab('crm')}
+              className={cn(
+                'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all truncate',
+                rightPaneTab === 'crm'
+                  ? 'bg-white text-gray-900 shadow-2xs'
+                  : 'text-gray-500 hover:text-gray-900'
+              )}
+            >
+              <User className="w-3.5 h-3.5 text-primary-600 shrink-0" />
+              <span className="truncate">CRM & Deals</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPaneTab('copilot')}
+              className={cn(
+                'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all truncate',
+                rightPaneTab === 'copilot'
+                  ? 'bg-white text-violet-700 shadow-2xs font-bold'
+                  : 'text-gray-500 hover:text-violet-700'
+              )}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+              <span className="truncate">AI Copilot</span>
+            </button>
+          </div>
+
+          {/* Inline Collapse Button on Desktop/Laptop */}
           <button
-            onClick={() => setRightPaneTab('crm')}
-            className={cn(
-              'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
-              rightPaneTab === 'crm'
-                ? 'bg-white text-gray-900 shadow-2xs'
-                : 'text-gray-500 hover:text-gray-900'
-            )}
+            type="button"
+            onClick={() => {
+              setIsRightPanelCollapsed(true);
+              try { localStorage.setItem('omni_inbox_right_panel_collapsed', 'true'); } catch {}
+            }}
+            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shrink-0 hidden lg:flex items-center justify-center"
+            title="Collapse Deals & Copilot panel"
           >
-            <User className="w-3.5 h-3.5 text-primary-600" />
-            <span>CRM & Deals</span>
-          </button>
-          <button
-            onClick={() => setRightPaneTab('copilot')}
-            className={cn(
-              'flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all',
-              rightPaneTab === 'copilot'
-                ? 'bg-white text-violet-700 shadow-2xs font-bold'
-                : 'text-gray-500 hover:text-violet-700'
-            )}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-violet-600" />
-            <span>AI Copilot</span>
+            <PanelRightClose className="w-4 h-4" />
           </button>
         </div>
 
@@ -895,7 +947,7 @@ export const InboxPage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {deals.length === 0 ? (
                   <p className="text-xs text-gray-400 italic">No deals attached to this contact.</p>
                 ) : (
@@ -931,7 +983,7 @@ export const InboxPage: React.FC = () => {
                 </Link>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                 {orders.length === 0 ? (
                   <p className="text-xs text-gray-400 italic">No orders found for this contact.</p>
                 ) : (
@@ -1345,7 +1397,7 @@ export const InboxPage: React.FC = () => {
   return (
     <div className="h-[calc(100dvh-5.2rem)] md:h-[calc(100vh-8rem)] bg-white rounded-none sm:rounded-2xl border border-gray-200/80 shadow-sm flex overflow-hidden relative">
       {/* ==================== LEFT PANE: Conversations List ==================== */}
-      <div className={cn('border-r border-gray-200 flex flex-col shrink-0 bg-slate-50/50 transition-all duration-200', selectedConvId ? 'hidden md:flex md:w-80 lg:w-96' : 'w-full md:w-80 lg:w-96 flex')}>
+      <div className={cn('border-r border-gray-200 flex flex-col shrink-0 bg-slate-50/50 transition-all duration-200', selectedConvId ? 'hidden md:flex md:w-80 lg:w-80 xl:w-96' : 'w-full md:w-80 lg:w-80 xl:w-96 flex')}>
         {/* Header & Filters */}
         <div className="p-4 border-b border-gray-200 space-y-3 bg-white">
           <div className="flex items-center justify-between">
@@ -1575,55 +1627,36 @@ export const InboxPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {/* Resume AI Bot Icon Button */}
                 <button
                   type="button"
                   onClick={handleResumeBot}
                   disabled={isResumingBot}
-                  className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 flex items-center gap-1.5 shadow-2xs transition-all disabled:opacity-50"
-                  title="Transfer back to autonomous AI bot reply mode"
+                  className="p-2 sm:p-2.5 rounded-xl bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 flex items-center justify-center shadow-2xs transition-all disabled:opacity-50"
+                  title="Resume AI Bot (Transfer back to autonomous AI reply mode)"
                 >
-                  <Bot className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="hidden sm:inline">{isResumingBot ? 'Resuming...' : 'Resume AI Bot'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRightPaneTab('copilot');
-                    setIsMobileDrawerOpen(true);
-                  }}
-                  className={cn(
-                    'px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-all shadow-2xs border',
-                    rightPaneTab === 'copilot' && isMobileDrawerOpen
-                      ? 'bg-violet-600 text-white border-violet-600 shadow-violet-500/20'
-                      : 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50'
+                  {isResumingBot ? (
+                    <RefreshCw className="w-4 h-4 text-emerald-600 animate-spin" />
+                  ) : (
+                    <Bot className="w-4 h-4 text-emerald-600" />
                   )}
-                  title="Toggle AI Copilot"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-violet-600" />
-                  <span className="hidden sm:inline">AI Copilot</span>
                 </button>
+
+                {/* User Profile & CRM / Copilot Panel Toggle Icon Button */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setRightPaneTab('crm');
-                    setIsMobileDrawerOpen(true);
-                  }}
-                  className="xl:hidden px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 flex items-center gap-1 shadow-2xs"
-                  title="Contact Details & CRM"
+                  onClick={() => toggleRightPanel()}
+                  className={cn(
+                    'p-2 sm:p-2.5 rounded-xl flex items-center justify-center transition-all shadow-2xs border select-none',
+                    (!isRightPanelCollapsed || isMobileDrawerOpen)
+                      ? 'bg-primary-600 text-white border-primary-600 shadow-primary-500/20'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  )}
+                  title="Toggle Contact Details, CRM Deals & AI Copilot"
                 >
-                  <User className="w-3.5 h-3.5 text-primary-600" />
-                  <span className="hidden sm:inline">Details</span>
+                  <User className="w-4 h-4" />
                 </button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsDealModalOpen(true)}
-                  className="hidden sm:flex"
-                  icon={<Plus className="w-3.5 h-3.5 text-primary-600" />}
-                >
-                  Add Deal
-                </Button>
               </div>
             </div>
 
@@ -2142,15 +2175,15 @@ export const InboxPage: React.FC = () => {
       </div>
 
       {/* ==================== RIGHT PANE: Contact Details, CRM Deals & AI Copilot ==================== */}
-      {activeConversation && (
-        <div className="w-80 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden xl:block space-y-4">
+      {activeConversation && !isRightPanelCollapsed && (
+        <div className="w-80 lg:w-80 xl:w-88 border-l border-gray-200 bg-white p-4 overflow-y-auto hidden lg:flex flex-col space-y-4 shrink-0 transition-all duration-200">
           {renderRightPaneContent()}
         </div>
       )}
 
       {/* ==================== MOBILE SLIDE-OVER DRAWER (CRM & AI Copilot) ==================== */}
       {activeConversation && isMobileDrawerOpen && (
-        <div className="fixed inset-0 z-50 xl:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <div
             className="fixed inset-0 bg-gray-900/50 backdrop-blur-xs transition-opacity"
             onClick={() => setIsMobileDrawerOpen(false)}

@@ -455,15 +455,24 @@ export const KnowledgeBasePage: React.FC = () => {
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-semibold text-gray-900">{kb.name}</h3>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-sm font-semibold text-gray-900 truncate" title={kb.name}>
+                              {kb.name}
+                            </h3>
                             {(kb as any).is_active === false && (
-                              <Badge variant="secondary" size="sm">Inactive</Badge>
+                              <Badge variant="secondary" size="sm" className="shrink-0 text-[10px] px-1.5 py-0">
+                                Inactive
+                              </Badge>
                             )}
                           </div>
                           {kb.description && (
-                            <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{kb.description}</p>
+                            <p
+                              className="text-xs text-gray-500 line-clamp-2 mt-1 break-words leading-relaxed"
+                              title={kb.description}
+                            >
+                              {kb.description}
+                            </p>
                           )}
                         </div>
 
@@ -514,21 +523,26 @@ export const KnowledgeBasePage: React.FC = () => {
           {selectedKb ? (
             <Card className="p-6">
               {/* Workspace Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-gray-100">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-gray-900">{selectedKb.name}</h2>
-                    <Badge variant="purple" size="sm">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-gray-100">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-lg font-bold text-gray-900 break-words" title={selectedKb.name}>
+                      {selectedKb.name}
+                    </h2>
+                    <Badge variant="purple" size="sm" className="shrink-0">
                       {(selectedKb as any).model || 'claude-3-5-sonnet'}
                     </Badge>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p
+                    className="text-xs text-gray-500 mt-1.5 break-words line-clamp-3 leading-relaxed max-w-2xl"
+                    title={selectedKb.description || undefined}
+                  >
                     {selectedKb.description || 'No description provided.'}
                   </p>
                 </div>
 
                 {/* Tabs Switcher */}
-                <div className="flex items-center bg-gray-100 p-1 rounded-xl">
+                <div className="flex items-center bg-gray-100 p-1 rounded-xl shrink-0">
                   <button
                     onClick={() => setActiveTab('documents')}
                     className={cn(
@@ -621,7 +635,7 @@ export const KnowledgeBasePage: React.FC = () => {
 
                         return (
                           <div key={doc.id} className="p-4 hover:bg-gray-50/80 transition flex items-center justify-between gap-4">
-                            <div className="min-w-0 flex items-start gap-3">
+                            <div className="min-w-0 flex items-start gap-3 flex-1">
                               <div className="w-9 h-9 rounded-xl bg-gray-100 text-gray-600 flex items-center justify-center shrink-0 mt-0.5">
                                 {sourceType === 'markdown' ? (
                                   <FileCode className="w-4 h-4 text-purple-600" />
@@ -631,27 +645,29 @@ export const KnowledgeBasePage: React.FC = () => {
                                   <FileText className="w-4 h-4 text-primary-600" />
                                 )}
                               </div>
-                              <div>
+                              <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                  <h4 className="text-sm font-semibold text-gray-900 truncate">{doc.title}</h4>
-                                  <Badge variant="outline" size="sm" className="capitalize text-[10px]">
+                                  <h4 className="text-sm font-semibold text-gray-900 truncate" title={doc.title}>
+                                    {doc.title}
+                                  </h4>
+                                  <Badge variant="outline" size="sm" className="capitalize text-[10px] shrink-0">
                                     {sourceType}
                                   </Badge>
                                 </div>
                                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                                  <span className="flex items-center gap-1 font-medium text-emerald-600">
+                                  <span className="flex items-center gap-1 font-medium text-emerald-600 shrink-0">
                                     <CheckCircle2 className="w-3 h-3" />
                                     {chunkCount} vector chunks
                                   </span>
                                   <span>•</span>
-                                  <span>Added {formatDateTime(doc.createdAt || (doc as any).created_at)}</span>
+                                  <span className="truncate">Added {formatDateTime(doc.createdAt || (doc as any).created_at)}</span>
                                 </div>
                               </div>
                             </div>
 
                             <button
                               onClick={() => setDeleteDocTarget(doc)}
-                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
                               title="Delete document and chunks"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -890,12 +906,12 @@ export const KnowledgeBasePage: React.FC = () => {
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-700">Description</label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               value={kbForm.description}
               onChange={(e) => setKbForm({ ...kbForm, description: e.target.value })}
               placeholder="e.g. Contains all official return policies and FAQ documentation"
-              className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
             />
           </div>
 
