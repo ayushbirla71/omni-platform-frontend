@@ -615,7 +615,7 @@ export const ChannelsPage: React.FC = () => {
   const handleOpenEditWidgetModal = (widget: IWebchatWidget) => {
     setEditingWidget(widget);
     setWidgetForm({
-      displayName: widget.displayName || widget.channel?.displayName || widget.title,
+      displayName: widget.displayName || widget.channelDisplayName || widget.channel?.displayName || widget.title || 'Website Live Chat',
       defaultFlowId: widget.defaultFlowId || widget.channel?.defaultFlowId || '',
       title: widget.title || 'Customer Support',
       subtitle: widget.subtitle || '',
@@ -1181,10 +1181,10 @@ export const ChannelsPage: React.FC = () => {
                           </div>
                           <div className="min-w-0">
                             <h4 className="text-sm font-bold text-gray-900 truncate">
-                              {widget.title || widget.displayName || 'Live Chat'}
+                              {widget.displayName || widget.channelDisplayName || widget.channel?.displayName || widget.title || 'Live Chat'}
                             </h4>
                             <p className="text-xs text-gray-500 truncate">
-                              {widget.subtitle || widget.displayName || 'Webchat Widget'}
+                              {widget.title ? `${widget.title} • ${widget.subtitle || 'Live Chat'}` : (widget.subtitle || 'Webchat Widget')}
                             </p>
                           </div>
                         </div>
@@ -2281,10 +2281,10 @@ export const ChannelsPage: React.FC = () => {
         description="Configure branding, style colors, welcome greeting, business hours, and preview in real time"
         maxWidth="5xl"
       >
-        <form onSubmit={handleSaveWidget} className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <form onSubmit={handleSaveWidget} className="flex flex-col">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pb-6">
             {/* Left Column: Form Controls (7 cols) */}
-            <div className="lg:col-span-7 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="lg:col-span-7 space-y-4">
               {/* General Info */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-gray-100">
@@ -2294,7 +2294,7 @@ export const ChannelsPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Input
-                    label="Internal Widget Name"
+                    label="Channel / Widget Name (Internal)"
                     placeholder="e.g. Main Website Live Chat"
                     value={widgetForm.displayName}
                     onChange={(e) => setWidgetForm({ ...widgetForm, displayName: e.target.value })}
@@ -2562,7 +2562,8 @@ export const ChannelsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+          {/* Sticky footer action bar */}
+          <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-white/95 backdrop-blur-sm border-t border-gray-100 flex items-center justify-end gap-3 shrink-0 z-20 shadow-sm">
             <Button
               variant="outline"
               type="button"
