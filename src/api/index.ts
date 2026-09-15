@@ -180,6 +180,8 @@ export const conversationsApi = {
       templateParams?: Record<string, string>;
       headerType?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
       headerValue?: string;
+      mediaStorageKey?: string;
+      filename?: string;
     }
   ) => apiClient.post<Message>(`/conversations/${conversationId}/template`, data),
 
@@ -250,6 +252,7 @@ export const campaignsApi = {
     tags?: string[];
     flowId?: string;
     message?: string;
+    templateName?: string;
     steps?: any[];
     definition?: any;
   }) => apiClient.post<Campaign>('/campaigns', data),
@@ -267,7 +270,26 @@ export const searchApi = {
 };
 
 // ==================== MEDIA API ====================
+export interface UploadMediaResult {
+  success: boolean;
+  key: string;
+  url: string;
+  downloadUrl: string;
+  fileUrl: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
 export const mediaApi = {
+  upload: (file: File | FormData) => {
+    const formData = file instanceof FormData ? file : (() => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return fd;
+    })();
+    return apiClient.post<UploadMediaResult>('/media/upload', formData);
+  },
   getDownloadUrl: (key: string) => apiClient.get<{ downloadUrl: string }>(`/media/download-url`, { key }),
 };
 

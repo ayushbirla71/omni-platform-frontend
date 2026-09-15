@@ -136,6 +136,17 @@ export interface TemplateComponent {
   [key: string]: any;
 }
 
+export interface UploadMediaResult {
+  success: boolean;
+  key: string;
+  url: string;
+  downloadUrl: string;
+  fileUrl: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
 export interface WhatsAppTemplate {
   id?: string;
   name: string;
@@ -357,6 +368,8 @@ export interface TemplateNode {
   templateParams?: Record<string, string>;
   headerType?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
   headerValue?: string;
+  mediaStorageKey?: string;
+  filename?: string;
   buttons?: TemplateButtonAction[];
   waitForDelivery?: boolean;
   onDelivered?: string;
@@ -484,6 +497,13 @@ export interface BroadcastDefinition {
   text?: string;
   flowId?: string;
   tags?: string[];
+  templateName?: string;
+  templateLanguage?: string;
+  templateParams?: Record<string, string>;
+  headerType?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
+  headerValue?: string;
+  mediaStorageKey?: string;
+  filename?: string;
 }
 
 export interface FlowCampaignDefinition {

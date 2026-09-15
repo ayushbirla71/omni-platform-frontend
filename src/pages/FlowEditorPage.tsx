@@ -60,6 +60,7 @@ import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
 import { Badge } from '../components/common/Badge';
+import { TemplateMediaUploader, TemplateMediaValue } from '../components/common/TemplateMediaUploader';
 import { FlowCanvasNode, FlowNodeData } from '../components/flow/FlowCanvasNode';
 import { FlowCustomEdge } from '../components/flow/FlowCustomEdge';
 import { FlowToolbar } from '../components/flow/FlowToolbar';
@@ -159,6 +160,7 @@ const FlowEditorCanvas: React.FC = () => {
   const [templateLanguage, setTemplateLanguage] = useState('en_US');
   const [templateHeaderType, setTemplateHeaderType] = useState<'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO' | undefined>();
   const [templateHeaderValue, setTemplateHeaderValue] = useState('');
+  const [templateMedia, setTemplateMedia] = useState<TemplateMediaValue>({});
   const [templateParams, setTemplateParams] = useState<Array<{ key: string; value: string }>>([]);
   const [templateButtons, setTemplateButtons] = useState<Array<{ buttonText: string; next: string }>>([]);
   const [templateSaveAs, setTemplateSaveAs] = useState('');
@@ -529,6 +531,11 @@ const FlowEditorCanvas: React.FC = () => {
       setTemplateLanguage(targetNode.language || 'en_US');
       setTemplateHeaderType(targetNode.headerType);
       setTemplateHeaderValue(targetNode.headerValue || '');
+      setTemplateMedia({
+        headerValue: targetNode.headerValue || '',
+        mediaStorageKey: targetNode.mediaStorageKey,
+        filename: targetNode.filename,
+      });
       setTemplateParams(
         targetNode.templateParams
           ? Object.entries(targetNode.templateParams).map(([k, v]) => ({ key: k, value: v }))
@@ -541,6 +548,7 @@ const FlowEditorCanvas: React.FC = () => {
       setTemplateLanguage('en_US');
       setTemplateHeaderType(undefined);
       setTemplateHeaderValue('');
+      setTemplateMedia({});
       setTemplateParams([]);
       setTemplateButtons([]);
       setTemplateSaveAs('');
@@ -562,14 +570,20 @@ const FlowEditorCanvas: React.FC = () => {
     if (headerComp) {
       const format = (headerComp.format as any) || (headerComp.text ? 'TEXT' : undefined);
       setTemplateHeaderType(format);
-      if (format === 'TEXT' && headerComp.text) {
-        setTemplateHeaderValue(headerComp.text);
-      } else {
-        setTemplateHeaderValue('');
-      }
+      const defaultHeaderVal =
+        format === 'TEXT' && headerComp.text
+          ? headerComp.text
+          : headerComp.example?.header_handle?.[0] || '';
+      setTemplateHeaderValue(defaultHeaderVal);
+      setTemplateMedia({
+        headerValue: defaultHeaderVal,
+        mediaStorageKey: undefined,
+        filename: undefined,
+      });
     } else {
       setTemplateHeaderType(undefined);
       setTemplateHeaderValue('');
+      setTemplateMedia({});
     }
 
     // 2. Body Parameters Decomposition
@@ -835,13 +849,16 @@ const FlowEditorCanvas: React.FC = () => {
         templateParams.forEach((p) => {
           if (p.key.trim() && p.value.trim()) pObj[p.key.trim()] = p.value.trim();
         });
+        const resolvedHeaderVal = templateMedia.headerValue?.trim() || templateHeaderValue.trim() || undefined;
         updatedNode = {
           id: editingNodeId,
           type: 'template',
           templateName: templateName.trim(),
           language: templateLanguage.trim() || 'en_US',
           headerType: templateHeaderType,
-          headerValue: templateHeaderValue.trim() || undefined,
+          headerValue: resolvedHeaderVal,
+          mediaStorageKey: templateMedia.mediaStorageKey,
+          filename: templateMedia.filename,
           templateParams: Object.keys(pObj).length ? pObj : undefined,
           buttons: templateButtons.filter((b) => b.buttonText.trim()),
           saveAs: templateSaveAs.trim() || undefined,
@@ -1340,7 +1357,14 @@ const FlowEditorCanvas: React.FC = () => {
                     </span>
                     <select
                       value={templateHeaderType || ''}
-                      onChange={(e) => setTemplateHeaderType(e.target.value ? (e.target.value as any) : undefined)}
+                      onChange={(e) => {
+                        const newType = e.target.value ? (e.target.value as any) : undefined;
+                        setTemplateHeaderType(newType);
+                        if (!newType) {
+                          setTemplateHeaderValue('');
+                          setTemplateMedia({});
+                        }
+                      }}
                       className="rounded-lg border border-gray-200 px-2 py-1 text-xs bg-white font-medium text-gray-700"
                     >
                       <option value="">None (No Header)</option>
@@ -1351,33 +1375,16 @@ const FlowEditorCanvas: React.FC = () => {
                     </select>
                   </div>
 
-                  {templateHeaderType === 'TEXT' && (
-                    <Input
-                      label="Header Text"
-                      placeholder="e.g. Order #{{orderId}} Confirmation"
-                      value={templateHeaderValue}
-                      onChange={(e) => setTemplateHeaderValue(e.target.value)}
-                      helperText="Supports static text or dynamic variables like {{orderId}}"
+                  {templateHeaderType && (
+                    <TemplateMediaUploader
+                      headerType={templateHeaderType}
+                      value={templateMedia}
+                      onChange={(val) => {
+                        setTemplateMedia(val);
+                        setTemplateHeaderValue(val.headerValue || '');
+                      }}
+                      allowVariables={true}
                     />
-                  )}
-
-                  {(templateHeaderType === 'IMAGE' ||
-                    templateHeaderType === 'VIDEO' ||
-                    templateHeaderType === 'DOCUMENT') && (
-                    <div className="space-y-1.5">
-                      <Input
-                        label={`${templateHeaderType} Media Link or Variable`}
-                        placeholder="https://example.com/file.jpg or {{deal.invoiceUrl}}"
-                        value={templateHeaderValue}
-                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
-                        helperText={`Direct HTTPS URL or dynamic variable for Meta ${templateHeaderType} delivery.`}
-                      />
-                      <p className="text-[10px] text-gray-500">
-                        {templateHeaderType === 'IMAGE' && 'Supported formats: JPG, PNG (Max 5MB)'}
-                        {templateHeaderType === 'VIDEO' && 'Supported formats: MP4 (Max 16MB)'}
-                        {templateHeaderType === 'DOCUMENT' && 'Supported formats: PDF, DOCX (Max 100MB)'}
-                      </p>
-                    </div>
                   )}
                 </div>
 
@@ -1592,17 +1599,20 @@ const FlowEditorCanvas: React.FC = () => {
                   <div className="flex-1 flex flex-col justify-start space-y-2 overflow-y-auto">
                     <div className="self-start max-w-[94%] bg-white rounded-2xl rounded-tl-xs shadow-md border border-gray-200/60 overflow-hidden">
                       {/* Media or Text Header Preview */}
-                      {templateHeaderType === 'TEXT' && templateHeaderValue && (
+                      {templateHeaderType === 'TEXT' && (templateMedia.headerValue || templateHeaderValue) && (
                         <div className="p-3 pb-1 font-bold text-xs text-gray-900 border-b border-gray-100">
-                          {templateHeaderValue}
+                          {templateMedia.headerValue || templateHeaderValue}
                         </div>
                       )}
 
                       {templateHeaderType === 'IMAGE' && (
                         <div className="bg-emerald-950/10 flex flex-col items-center justify-center min-h-[120px] p-2 text-center border-b border-gray-100">
-                          {templateHeaderValue && (templateHeaderValue.startsWith('http://') || templateHeaderValue.startsWith('https://')) ? (
+                          {(templateMedia.headerValue || templateHeaderValue) &&
+                          ((templateMedia.headerValue || templateHeaderValue).startsWith('http://') ||
+                            (templateMedia.headerValue || templateHeaderValue).startsWith('https://') ||
+                            (templateMedia.headerValue || templateHeaderValue).startsWith('/api/')) ? (
                             <img
-                              src={templateHeaderValue}
+                              src={templateMedia.headerValue || templateHeaderValue}
                               alt="Header Preview"
                               className="w-full h-32 object-cover rounded-lg"
                               onError={(e) => {
@@ -1614,7 +1624,7 @@ const FlowEditorCanvas: React.FC = () => {
                               <ImageIcon className="w-8 h-8 opacity-70" />
                               <span className="text-[11px] font-semibold">Image Header</span>
                               <span className="text-[9px] font-mono text-gray-600 truncate max-w-[200px]">
-                                {templateHeaderValue || '{{variable}} or image link'}
+                                {templateMedia.headerValue || templateHeaderValue || '{{variable}} or image link'}
                               </span>
                             </div>
                           )}
@@ -1626,7 +1636,7 @@ const FlowEditorCanvas: React.FC = () => {
                           <Video className="w-8 h-8 opacity-70 mb-1" />
                           <span className="text-[11px] font-semibold">Video Header Attachment</span>
                           <span className="text-[9px] font-mono text-gray-600 truncate max-w-[200px]">
-                            {templateHeaderValue || '{{videoUrl}}'}
+                            {templateMedia.filename ? `📎 ${templateMedia.filename}` : templateMedia.headerValue || templateHeaderValue || '{{videoUrl}}'}
                           </span>
                         </div>
                       )}
@@ -1635,9 +1645,11 @@ const FlowEditorCanvas: React.FC = () => {
                         <div className="bg-amber-950/10 flex items-center gap-2 p-3 border-b border-gray-100 text-amber-950">
                           <File className="w-7 h-7 text-amber-700 shrink-0" />
                           <div className="overflow-hidden">
-                            <span className="text-xs font-bold truncate block">PDF Document</span>
+                            <span className="text-xs font-bold truncate block">
+                              {templateMedia.filename || 'PDF Document'}
+                            </span>
                             <span className="text-[10px] font-mono text-gray-600 truncate block">
-                              {templateHeaderValue || '{{invoicePdfUrl}}'}
+                              {templateMedia.headerValue || templateHeaderValue || '{{invoicePdfUrl}}'}
                             </span>
                           </div>
                         </div>

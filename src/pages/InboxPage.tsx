@@ -58,6 +58,7 @@ import { Input } from '../components/common/Input';
 import { formatDateTime, formatRelativeTime, cn } from '../lib/utils';
 import { WhatsAppTemplateCard } from '../components/chat/WhatsAppTemplateCard';
 import { APPROVED_TEMPLATES_CATALOG, registerDynamicTemplates } from '../utils/whatsapp-templates';
+import { TemplateMediaUploader, TemplateMediaValue } from '../components/common/TemplateMediaUploader';
 
 export const InboxPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -158,7 +159,7 @@ export const InboxPage: React.FC = () => {
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
-  const [templateHeaderValue, setTemplateHeaderValue] = useState('');
+  const [templateMedia, setTemplateMedia] = useState<TemplateMediaValue>({});
   const [isSendingTemplate, setIsSendingTemplate] = useState(false);
 
   // Modals
@@ -651,7 +652,7 @@ export const InboxPage: React.FC = () => {
     setIsLoadingTemplates(true);
     setSelectedTemplate(null);
     setTemplateParams({});
-    setTemplateHeaderValue('');
+    setTemplateMedia({});
 
     try {
       if (channelId) {
@@ -709,7 +710,11 @@ export const InboxPage: React.FC = () => {
     });
 
     setTemplateParams(newParams);
-    setTemplateHeaderValue(defaultHeaderValue);
+    setTemplateMedia({
+      headerValue: defaultHeaderValue,
+      mediaStorageKey: undefined,
+      filename: undefined,
+    });
   };
 
   const handleSendTemplate = async () => {
@@ -719,7 +724,7 @@ export const InboxPage: React.FC = () => {
 
     const headerComp = selectedTemplate.components?.find((c) => c.type === 'HEADER');
     const headerType = headerComp?.format as any;
-    const finalHeaderValue = templateHeaderValue.trim() || headerComp?.example?.header_handle?.[0] || undefined;
+    const finalHeaderValue = templateMedia.headerValue?.trim() || headerComp?.example?.header_handle?.[0] || undefined;
 
     try {
       const sentMsg = await conversationsApi.sendTemplate(selectedConvId, {
@@ -728,6 +733,8 @@ export const InboxPage: React.FC = () => {
         templateParams,
         headerType: headerType && ['TEXT', 'IMAGE', 'DOCUMENT', 'VIDEO'].includes(headerType) ? headerType : undefined,
         headerValue: finalHeaderValue,
+        mediaStorageKey: templateMedia.mediaStorageKey,
+        filename: templateMedia.filename,
       });
 
       setMessages((prev) => {
@@ -752,7 +759,7 @@ export const InboxPage: React.FC = () => {
       setIsTemplateModalOpen(false);
       setSelectedTemplate(null);
       setTemplateParams({});
-      setTemplateHeaderValue('');
+      setTemplateMedia({});
       showToast(`Template "${selectedTemplate.name}" sent successfully`, 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to send template', 'error');
@@ -2341,36 +2348,28 @@ export const InboxPage: React.FC = () => {
               {/* Dynamic Parameter Inputs */}
               {selectedTemplate && (
                 <div className="space-y-3">
-                  {/* Header parameter if applicable for text variables */}
-                  {selectedTemplate.components?.some((c) => c.type === 'HEADER' && c.format === 'TEXT' && c.text?.includes('{{1}}')) && (
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                        Header Variable {'{{1}}'}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Order #1234"
-                        value={templateHeaderValue}
-                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
-                        className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary-500"
-                      />
-                    </div>
-                  )}
-
-                  {/* Header Media URL for IMAGE / VIDEO / DOCUMENT */}
-                  {selectedTemplate.components?.some((c) => c.type === 'HEADER' && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format || '')) && (
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                        Header Media URL (Optional — Pre-filled with Meta approved asset)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="https://..."
-                        value={templateHeaderValue}
-                        onChange={(e) => setTemplateHeaderValue(e.target.value)}
-                        className="w-full text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary-500 font-mono text-[11px]"
-                      />
-                    </div>
+                  {/* Header parameter or media uploader */}
+                  {selectedTemplate.components?.some(
+                    (c) => c.type === 'HEADER' && ['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT'].includes(c.format || '')
+                  ) && (
+                    <TemplateMediaUploader
+                      headerType={
+                        (selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format as any) || 'IMAGE'
+                      }
+                      value={templateMedia}
+                      onChange={setTemplateMedia}
+                      allowVariables={false}
+                      label={
+                        selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format === 'TEXT'
+                          ? 'Header Text / Variable {{1}}'
+                          : `Template Header ${(selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format || '').toLowerCase()}`
+                      }
+                      description={
+                        selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format === 'TEXT'
+                          ? 'Enter the text value for the header.'
+                          : 'Upload an image, video, or document to send with this template.'
+                      }
+                    />
                   )}
 
                   {Object.keys(templateParams).length > 0 && (
@@ -2413,8 +2412,8 @@ export const InboxPage: React.FC = () => {
                             templateName: selectedTemplate.name,
                             templateParams,
                             headerType: selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format as any,
-                            headerValue: templateHeaderValue.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
-                            mediaUrl: templateHeaderValue.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
+                            headerValue: templateMedia.headerValue?.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
+                            mediaUrl: templateMedia.headerValue?.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
                             bodyText: selectedTemplate.components?.find((c) => c.type === 'BODY')?.text,
                             footerText: selectedTemplate.components?.find((c) => c.type === 'FOOTER')?.text,
                             buttons: (selectedTemplate.components?.find((c) => c.type === 'BUTTONS') as any)?.buttons,

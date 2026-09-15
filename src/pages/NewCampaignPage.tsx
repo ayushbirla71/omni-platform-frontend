@@ -21,9 +21,15 @@ import {
   AlertTriangle,
   AlertCircle,
   ShieldCheck,
+  FileText,
+  Image as ImageIcon,
+  Video,
+  Phone,
+  ExternalLink,
+  MessageSquare,
 } from 'lucide-react';
 import { campaignsApi, channelsApi, contactsApi, flowsApi } from '../api';
-import type { Channel, Contact, Flow, DripStep } from '../types';
+import type { Channel, Contact, Flow, DripStep, WhatsAppTemplate } from '../types';
 import { getTierInfo, calculateTierCapacity } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
 import { Card } from '../components/common/Card';
@@ -31,6 +37,16 @@ import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
+import {
+  TemplateMediaUploader,
+  TemplateMediaValue,
+} from '../components/common/TemplateMediaUploader';
+import {
+  APPROVED_TEMPLATES_CATALOG,
+  registerDynamicTemplates,
+  resolveTemplateMessage,
+  findTemplateByName,
+} from '../utils/whatsapp-templates';
 import { cn } from '../lib/utils';
 
 export const NewCampaignPage: React.FC = () => {
@@ -54,7 +70,15 @@ export const NewCampaignPage: React.FC = () => {
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
 
   // Broadcast fields
+  const [broadcastSubtype, setBroadcastSubtype] = useState<'template' | 'text'>('template');
   const [broadcastMessage, setBroadcastMessage] = useState('');
+
+  // WhatsApp HSM Template broadcast states
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>(APPROVED_TEMPLATES_CATALOG);
+  const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
+  const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
+  const [templateMedia, setTemplateMedia] = useState<TemplateMediaValue>({});
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
   // Drip fields
   const [dripSteps, setDripSteps] = useState<DripStep[]>([
@@ -81,7 +105,8 @@ export const NewCampaignPage: React.FC = () => {
         setAvailableTags(tagsData);
 
         if (channelsData.length > 0) {
-          setSelectedChannelId(channelsData[0].id);
+          const firstCh = channelsData[0];
+          setSelectedChannelId(firstCh.id);
         }
 
         const publishedFlow = flowsData.find((f) => f.status === 'published') || flowsData[0];
@@ -97,6 +122,72 @@ export const NewCampaignPage: React.FC = () => {
 
     loadData();
   }, []);
+
+  const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+  const isWhatsAppChannel = selectedChannel?.type === 'whatsapp';
+
+  // Helper to initialize and select a template
+  const handleSelectTemplate = (template: WhatsAppTemplate) => {
+    setSelectedTemplate(template);
+
+    // Parse body variables
+    const bodyComp = template.components?.find((c) => c.type === 'BODY');
+    const matches = bodyComp?.text?.match(/{{\d+}}/g) || [];
+    const uniqueParams = Array.from(new Set(matches.map((m) => m.replace(/[{}]/g, ''))));
+    const initialParams: Record<string, string> = {};
+    uniqueParams.forEach((paramKey) => {
+      initialParams[paramKey] = paramKey === '1' ? '{{name}}' : '';
+    });
+    setTemplateParams(initialParams);
+
+    // Parse header
+    const headerComp = template.components?.find((c) => c.type === 'HEADER');
+    const headerFormat = (headerComp?.format || 'IMAGE').toUpperCase();
+    const exampleUrl = headerComp?.example?.header_handle?.[0] || '';
+
+    setTemplateMedia({
+      headerValue: exampleUrl || '',
+      mediaStorageKey: '',
+      filename: headerFormat === 'DOCUMENT' ? `${template.name}_document.pdf` : undefined,
+    });
+  };
+
+  // Load WhatsApp templates when channel changes or template broadcast is active
+  useEffect(() => {
+    if (!selectedChannelId) return;
+
+    if (isWhatsAppChannel) {
+      setIsLoadingTemplates(true);
+      channelsApi
+        .getTemplates(selectedChannelId)
+        .then((templates) => {
+          const approved = (templates || []).filter(
+            (t) => !t.status || t.status.toUpperCase() === 'APPROVED'
+          );
+          const listToShow = approved.length > 0 ? approved : templates;
+          if (listToShow && listToShow.length > 0) {
+            setChannelTemplates(listToShow);
+            registerDynamicTemplates(listToShow);
+            handleSelectTemplate(listToShow[0]);
+          } else {
+            setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
+            registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
+            handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+          }
+        })
+        .catch((err) => {
+          console.warn('[NewCampaignPage] Using fallback template catalog:', err);
+          setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
+          registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
+          handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+        })
+        .finally(() => {
+          setIsLoadingTemplates(false);
+        });
+    } else {
+      setBroadcastSubtype('text');
+    }
+  }, [selectedChannelId, isWhatsAppChannel]);
 
   // Compute targeted contacts dynamically
   const targetedContacts = useMemo(() => {
@@ -169,6 +260,22 @@ export const NewCampaignPage: React.FC = () => {
     setDripSteps(copy);
   };
 
+  // Header info for currently selected template
+  const templateHeaderComp = selectedTemplate?.components?.find((c) => c.type === 'HEADER');
+  const templateHeaderType = (templateHeaderComp?.format as 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'TEXT') || null;
+
+  // Resolve preview data for live card
+  const previewData = useMemo(() => {
+    if (!selectedTemplate) return null;
+    return resolveTemplateMessage({
+      templateName: selectedTemplate.name,
+      templateParams,
+      headerType: templateHeaderType || undefined,
+      headerValue: templateMedia.headerValue || '',
+      knownTemplates: channelTemplates,
+    });
+  }, [selectedTemplate, templateParams, templateHeaderType, templateMedia, channelTemplates]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -186,9 +293,18 @@ export const NewCampaignPage: React.FC = () => {
       return;
     }
 
-    if (campaignType === 'broadcast' && !broadcastMessage.trim()) {
-      showToast('Please enter a broadcast message', 'error');
-      return;
+    if (campaignType === 'broadcast') {
+      if (broadcastSubtype === 'template') {
+        if (!selectedTemplate) {
+          showToast('Please select a WhatsApp template for this broadcast', 'error');
+          return;
+        }
+      } else {
+        if (!broadcastMessage.trim()) {
+          showToast('Please enter a broadcast message', 'error');
+          return;
+        }
+      }
     }
 
     if (campaignType === 'drip' && dripSteps.length === 0) {
@@ -205,6 +321,28 @@ export const NewCampaignPage: React.FC = () => {
     try {
       const contactIds = targetedContacts.map((c) => c.id);
 
+      let definitionPayload: any;
+      if (campaignType === 'flow') {
+        definitionPayload = { flowId: selectedFlowId, tags: selectedTags };
+      } else if (campaignType === 'broadcast') {
+        if (broadcastSubtype === 'template' && selectedTemplate) {
+          definitionPayload = {
+            templateName: selectedTemplate.name,
+            templateLanguage: selectedTemplate.language || 'en',
+            templateParams,
+            headerType: templateHeaderType || undefined,
+            headerValue: templateMedia.headerValue || undefined,
+            mediaStorageKey: templateMedia.mediaStorageKey || undefined,
+            filename: templateMedia.filename || undefined,
+            tags: selectedTags,
+          };
+        } else {
+          definitionPayload = { text: broadcastMessage.trim(), tags: selectedTags };
+        }
+      } else {
+        definitionPayload = { steps: dripSteps };
+      }
+
       await campaignsApi.create({
         name: name.trim(),
         type: campaignType,
@@ -212,14 +350,16 @@ export const NewCampaignPage: React.FC = () => {
         contactIds,
         tags: audienceMode === 'tags' && selectedTags.length > 0 ? selectedTags : undefined,
         flowId: campaignType === 'flow' ? selectedFlowId : undefined,
-        message: campaignType === 'broadcast' ? broadcastMessage.trim() : undefined,
+        templateName:
+          campaignType === 'broadcast' && broadcastSubtype === 'template' && selectedTemplate
+            ? selectedTemplate.name
+            : undefined,
+        message:
+          campaignType === 'broadcast' && broadcastSubtype === 'text'
+            ? broadcastMessage.trim()
+            : undefined,
         steps: campaignType === 'drip' ? dripSteps : undefined,
-        definition:
-          campaignType === 'flow'
-            ? { flowId: selectedFlowId, tags: selectedTags }
-            : campaignType === 'broadcast'
-            ? { text: broadcastMessage.trim(), tags: selectedTags }
-            : { steps: dripSteps },
+        definition: definitionPayload,
       });
 
       showToast(`Campaign "${name}" created with ${contactIds.length} recipients!`, 'success');
@@ -232,8 +372,6 @@ export const NewCampaignPage: React.FC = () => {
   };
 
   const selectedFlow = flows.find((f) => f.id === selectedFlowId);
-  const selectedChannel = channels.find((c) => c.id === selectedChannelId);
-  const isWhatsAppChannel = selectedChannel?.type === 'whatsapp';
   const channelTier = selectedChannel?.messagingLimitTier || selectedChannel?.messaging_limit_tier;
   const tierInfo = useMemo(() => getTierInfo(channelTier), [channelTier]);
   const tierCapacity = useMemo(
@@ -262,7 +400,7 @@ export const NewCampaignPage: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold text-gray-900">Create New Campaign</h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              Launch Flow Builder automations, quick broadcasts, or multi-step drips targeted by tags
+              Launch WhatsApp HSM templates, Flow Builder automations, or multi-step drips targeted by tags
             </p>
           </div>
         </div>
@@ -287,7 +425,7 @@ export const NewCampaignPage: React.FC = () => {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Flow Automation Mode (Recommended) */}
+            {/* Flow Automation Mode */}
             <div
               onClick={() => setCampaignType('flow')}
               className={cn(
@@ -311,7 +449,7 @@ export const NewCampaignPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Instant Broadcast */}
+            {/* Instant Broadcast (Template or Text) */}
             <div
               onClick={() => setCampaignType('broadcast')}
               className={cn(
@@ -327,9 +465,9 @@ export const NewCampaignPage: React.FC = () => {
                 </div>
                 {campaignType === 'broadcast' && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
               </div>
-              <h3 className="text-sm font-bold text-gray-900">Instant Broadcast</h3>
+              <h3 className="text-sm font-bold text-gray-900">Direct Broadcast</h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Send a single direct text or template message simultaneously to targeted contacts.
+                Broadcast an approved WhatsApp HSM template with media or a direct message to targeted contacts.
               </p>
             </div>
 
@@ -359,7 +497,7 @@ export const NewCampaignPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
             <Input
               label="Campaign Name"
-              placeholder="e.g. VIP Customer Offer - Followup Flow"
+              placeholder="e.g. Festival Offer Broadcast - WhatsApp"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -399,7 +537,7 @@ export const NewCampaignPage: React.FC = () => {
             ) : (
               <Repeat className="w-4 h-4 text-purple-600" />
             )}
-            2. {campaignType === 'flow' ? 'Select Visual Flow' : campaignType === 'broadcast' ? 'Broadcast Message' : 'Drip Sequence'}
+            2. {campaignType === 'flow' ? 'Select Visual Flow' : campaignType === 'broadcast' ? 'Broadcast Message & Media' : 'Drip Sequence'}
           </h2>
 
           {/* 1. Flow Builder Selection */}
@@ -490,34 +628,278 @@ export const NewCampaignPage: React.FC = () => {
             </div>
           )}
 
-          {/* 2. Broadcast Message */}
+          {/* 2. Broadcast Campaign Configuration */}
           {campaignType === 'broadcast' && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Message Text
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="Hi {{name}}, we are excited to announce our new special offer! Visit..."
-                  value={broadcastMessage}
-                  onChange={(e) => setBroadcastMessage(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:border-primary-500"
-                  required
-                />
-                <p className="text-[11px] text-gray-500">
-                  Tip: Use <code>&#123;&#123;name&#125;&#125;</code> to personalize each message with the contact's name.
-                </p>
-              </div>
+            <div className="space-y-5">
+              {/* WhatsApp Broadcast Format Selector (Template vs Text) */}
+              {isWhatsAppChannel && (
+                <div className="flex items-center gap-2 p-1 bg-gray-100/80 rounded-xl w-fit border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastSubtype('template')}
+                    className={cn(
+                      'px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5',
+                      broadcastSubtype === 'template'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    )}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+                    WhatsApp HSM Template (Recommended)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBroadcastSubtype('text')}
+                    className={cn(
+                      'px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5',
+                      broadcastSubtype === 'text'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    )}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Plain Text Broadcast
+                  </button>
+                </div>
+              )}
 
-              {broadcastMessage && (
-                <div className="p-4 rounded-xl bg-slate-50 border border-gray-100 space-y-1.5">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                    <Eye className="w-3.5 h-3.5" /> Sample Preview (Interpolated)
-                  </span>
-                  <div className="p-3 bg-white rounded-xl border border-gray-200 text-xs text-gray-800 shadow-xs max-w-md">
-                    {broadcastMessage.replace(/{{name}}/g, 'Alex')}
+              {/* Template Mode */}
+              {broadcastSubtype === 'template' && isWhatsAppChannel ? (
+                <div className="space-y-5">
+                  {/* Template Picker */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Select Approved Meta Template
+                      </label>
+                      <span className="text-[11px] text-gray-500">
+                        {channelTemplates.length} approved templates available
+                      </span>
+                    </div>
+
+                    {isLoadingTemplates ? (
+                      <div className="p-3 bg-gray-50 border rounded-xl flex items-center gap-2 text-xs text-gray-500">
+                        <Spinner size="sm" />
+                        <span>Loading templates from Meta...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedTemplate?.name || ''}
+                        onChange={(e) => {
+                          const t = channelTemplates.find((x) => x.name === e.target.value);
+                          if (t) handleSelectTemplate(t);
+                        }}
+                        className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm bg-white font-medium focus:outline-none focus:border-primary-500"
+                        required
+                      >
+                        {channelTemplates.map((t) => (
+                          <option key={t.name} value={t.name}>
+                            {t.name} ({t.category || 'MARKETING'} • {t.language || 'en'})
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
+
+                  {selectedTemplate && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                      {/* Left: Media Uploader & Parameter Fields */}
+                      <div className="space-y-4">
+                        {/* Template Header Media Uploader */}
+                        {templateHeaderType && (
+                          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                            <TemplateMediaUploader
+                              headerType={templateHeaderType}
+                              value={templateMedia}
+                              onChange={setTemplateMedia}
+                              allowVariables={true}
+                              label={`Template Header ${templateHeaderType}`}
+                              description={
+                                templateHeaderType === 'TEXT'
+                                  ? 'Enter text or variable for the template header.'
+                                  : `Upload ${templateHeaderType.toLowerCase()} file or specify dynamic media URL.`
+                              }
+                            />
+                          </div>
+                        )}
+
+                        {/* Template Body Parameters */}
+                        {Object.keys(templateParams).length > 0 && (
+                          <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                                Template Body Parameters
+                              </h4>
+                              <span className="text-[10px] text-gray-500">
+                                {Object.keys(templateParams).length} variables
+                              </span>
+                            </div>
+
+                            <div className="space-y-2.5">
+                              {Object.keys(templateParams).map((key) => (
+                                <div key={key} className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[11px] font-semibold text-gray-700">
+                                      Parameter <code>&#123;&#123;{key}&#125;&#125;</code>:
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setTemplateParams((prev) => ({
+                                          ...prev,
+                                          [key]: '{{name}}',
+                                        }))
+                                      }
+                                      className="text-[10px] text-primary-600 hover:text-primary-700 font-semibold"
+                                    >
+                                      Use Contact Name (&#123;&#123;name&#125;&#125;)
+                                    </button>
+                                  </div>
+                                  <Input
+                                    value={templateParams[key] || ''}
+                                    onChange={(e) =>
+                                      setTemplateParams((prev) => ({
+                                        ...prev,
+                                        [key]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={`Value for {{${key}}} or {{name}}`}
+                                    className="text-xs py-1.5"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Live Interactive WhatsApp Card Preview */}
+                      <div className="space-y-2">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-primary-600" />
+                          Live WhatsApp HSM Preview
+                        </span>
+
+                        <div className="p-4 rounded-2xl bg-gradient-to-b from-[#e5ddd5]/60 to-[#d1d7db]/40 border border-gray-300 shadow-inner">
+                          {previewData && (
+                            <div className="max-w-sm mx-auto bg-white rounded-2xl shadow-md border border-gray-200 overflow-hidden text-gray-900 text-xs">
+                              {/* Header Rendering */}
+                              {previewData.headerType === 'IMAGE' && (
+                                <div className="bg-slate-100 border-b border-gray-100 flex items-center justify-center min-h-[160px] max-h-[220px] overflow-hidden relative">
+                                  {previewData.headerMediaUrl ? (
+                                    <img
+                                      src={previewData.headerMediaUrl}
+                                      alt="Header Media"
+                                      className="w-full h-auto object-cover"
+                                      onError={(e) => {
+                                        (e.target as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                  ) : (
+                                    <div className="p-6 text-center text-slate-400 space-y-1">
+                                      <ImageIcon className="w-8 h-8 mx-auto stroke-1 text-slate-400" />
+                                      <p className="text-[10px]">Header Image Preview</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {previewData.headerType === 'VIDEO' && (
+                                <div className="bg-slate-900 text-white p-6 flex flex-col items-center justify-center min-h-[140px] text-center">
+                                  <Video className="w-8 h-8 mb-1 text-emerald-400" />
+                                  <span className="text-[11px] font-semibold">Video Header Attached</span>
+                                  {templateMedia.filename && (
+                                    <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                                      {templateMedia.filename}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {previewData.headerType === 'DOCUMENT' && (
+                                <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2.5">
+                                  <div className="p-2 rounded-lg bg-rose-100 text-rose-600">
+                                    <FileText className="w-5 h-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[11px] font-bold text-gray-900 truncate">
+                                      {templateMedia.filename || 'Document Attachment.pdf'}
+                                    </p>
+                                    <p className="text-[9px] text-gray-500">PDF • Document Attachment</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {previewData.headerType === 'TEXT' && previewData.headerText && (
+                                <div className="p-3 pb-1 font-bold text-sm text-gray-900 border-b border-gray-50">
+                                  {previewData.headerText}
+                                </div>
+                              )}
+
+                              {/* Body Text */}
+                              <div className="p-3.5 space-y-2 whitespace-pre-wrap leading-relaxed text-gray-800 text-[11px]">
+                                {previewData.bodyText.replace(/{{name}}/g, 'Alex')}
+                              </div>
+
+                              {/* Footer Text */}
+                              {previewData.footerText && (
+                                <div className="px-3.5 pb-2 text-[10px] text-gray-400">
+                                  {previewData.footerText}
+                                </div>
+                              )}
+
+                              {/* Interactive Action Buttons */}
+                              {previewData.buttons && previewData.buttons.length > 0 && (
+                                <div className="border-t border-gray-100 divide-y divide-gray-100 bg-gray-50/50">
+                                  {previewData.buttons.map((btn, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="py-2 px-3 text-center font-semibold text-[11px] text-emerald-600 hover:bg-emerald-50/50 flex items-center justify-center gap-1.5"
+                                    >
+                                      {btn.type === 'PHONE_NUMBER' && <Phone className="w-3 h-3" />}
+                                      {btn.type === 'URL' && <ExternalLink className="w-3 h-3" />}
+                                      <span>{btn.text}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Plain Text Broadcast */
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Message Text
+                    </label>
+                    <textarea
+                      rows={4}
+                      placeholder="Hi {{name}}, we are excited to announce our new special offer! Visit..."
+                      value={broadcastMessage}
+                      onChange={(e) => setBroadcastMessage(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 p-3 text-sm focus:outline-none focus:border-primary-500"
+                      required
+                    />
+                    <p className="text-[11px] text-gray-500">
+                      Tip: Use <code>&#123;&#123;name&#125;&#125;</code> to personalize each message with the contact's name.
+                    </p>
+                  </div>
+
+                  {broadcastMessage && (
+                    <div className="p-4 rounded-xl bg-slate-50 border border-gray-100 space-y-1.5">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                        <Eye className="w-3.5 h-3.5" /> Sample Preview (Interpolated)
+                      </span>
+                      <div className="p-3 bg-white rounded-xl border border-gray-200 text-xs text-gray-800 shadow-xs max-w-md">
+                        {broadcastMessage.replace(/{{name}}/g, 'Alex')}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -764,6 +1146,7 @@ export const NewCampaignPage: React.FC = () => {
               </div>
             </div>
           )}
+
           {/* WhatsApp 24-Hour Messaging Tier Capacity & Health Status */}
           {isWhatsAppChannel && (
             <div
