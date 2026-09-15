@@ -639,8 +639,15 @@ export const webchatApi = {
 
 // ==================== PUBLIC WEBCHAT VISITOR API ====================
 export const webchatVisitorApi = {
-  getConfig: (widgetKey: string) =>
-    apiClient.get<PublicWidgetConfig>(`/webchat/config/${widgetKey}`),
+  getConfig: (widgetKey: string, parentOrigin?: string) =>
+    apiClient.get<PublicWidgetConfig>(
+      `/webchat/config/${widgetKey}`,
+      parentOrigin ? { parentOrigin } : undefined,
+      {
+        skipAuthRedirect: true,
+        ...(parentOrigin ? { headers: { 'x-parent-origin': parentOrigin } } : {}),
+      }
+    ),
 
   initSession: (data: {
     widgetKey: string;
@@ -648,7 +655,12 @@ export const webchatVisitorApi = {
     contactName?: string;
     contactEmail?: string;
     metadata?: Record<string, any>;
-  }) => apiClient.post<VisitorSessionInitResponse>('/webchat/init', data),
+    parentOrigin?: string;
+  }) =>
+    apiClient.post<VisitorSessionInitResponse>('/webchat/init', data, {
+      skipAuthRedirect: true,
+      ...(data.parentOrigin ? { headers: { 'x-parent-origin': data.parentOrigin } } : {}),
+    }),
 
   getMessages: (token: string) =>
     apiClient.get<{ messages: Message[] }>('/webchat/messages', undefined, {

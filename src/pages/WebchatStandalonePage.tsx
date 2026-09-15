@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { WebchatWidget } from '../components/webchat/WebchatWidget';
 
@@ -11,6 +11,19 @@ export const WebchatStandalonePage: React.FC = () => {
     searchParams.get('embedded') === 'true' ||
     searchParams.get('embed') === 'true' ||
     (typeof window !== 'undefined' && window.self !== window.top);
+
+  const parentOrigin = searchParams.get('parentOrigin') || undefined;
+
+  useEffect(() => {
+    if (isEmbedded) {
+      document.documentElement.style.backgroundColor = 'transparent';
+      document.body.style.backgroundColor = 'transparent';
+      const root = document.getElementById('root');
+      if (root) {
+        root.style.backgroundColor = 'transparent';
+      }
+    }
+  }, [isEmbedded]);
 
   if (!widgetKey) {
     return (
@@ -29,7 +42,7 @@ export const WebchatStandalonePage: React.FC = () => {
   if (isEmbedded) {
     return (
       <div className="w-screen h-screen overflow-hidden bg-transparent">
-        <WebchatWidget widgetKey={widgetKey} mode="floating" />
+        <WebchatWidget widgetKey={widgetKey} mode="floating" parentOrigin={parentOrigin} />
       </div>
     );
   }
@@ -38,7 +51,7 @@ export const WebchatStandalonePage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50/30 p-2 sm:p-6 font-sans">
       <div className="w-full max-w-md h-[95vh] sm:h-[680px] shadow-2xl rounded-2xl overflow-hidden border border-slate-200/80 bg-white">
-        <WebchatWidget widgetKey={widgetKey} mode="standalone" className="h-full" />
+        <WebchatWidget widgetKey={widgetKey} mode="standalone" parentOrigin={parentOrigin} className="h-full" />
       </div>
     </div>
   );

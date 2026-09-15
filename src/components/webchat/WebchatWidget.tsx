@@ -26,6 +26,7 @@ export interface WebchatWidgetProps {
   widgetKey?: string;
   mode?: 'floating' | 'standalone' | 'preview';
   previewConfig?: Partial<PublicWidgetConfig>;
+  parentOrigin?: string;
   onClose?: () => void;
   className?: string;
 }
@@ -34,6 +35,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
   widgetKey = '',
   mode = 'floating',
   previewConfig,
+  parentOrigin,
   onClose,
   className = '',
 }) => {
@@ -133,7 +135,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
     setConfigError(null);
 
     webchatVisitorApi
-      .getConfig(widgetKey)
+      .getConfig(widgetKey, parentOrigin)
       .then((cfg) => {
         if (isMounted) {
           setConfig(cfg);
@@ -150,7 +152,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [widgetKey, previewConfig]);
+  }, [widgetKey, previewConfig, parentOrigin]);
 
   // --------------------------------------------------------------------------
   // 2. Initialize or Resume Visitor Session
@@ -170,6 +172,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
           visitorSessionId: savedSessionId,
           contactName: savedName,
           contactEmail: savedEmail,
+          parentOrigin,
           metadata: {
             referrer: typeof document !== 'undefined' ? document.referrer : '',
             userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
@@ -192,7 +195,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
         console.error('[Webchat] Session initialization failed:', err);
       }
     },
-    [widgetKey]
+    [widgetKey, parentOrigin]
   );
 
   useEffect(() => {
