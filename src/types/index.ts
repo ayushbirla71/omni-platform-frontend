@@ -119,20 +119,31 @@ export interface OnboardingCapacity {
 }
 
 // WhatsApp Templates
+export interface TemplateButton {
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'COPY_CODE' | 'OTP' | 'CATALOG' | 'MPM' | string;
+  text?: string;
+  url?: string;
+  phone_number?: string;
+  example?: string | string[];
+  otp_type?: 'COPY_CODE' | 'ONE_TAP' | 'ZERO_TAP';
+  autofill_text?: string;
+  package_name?: string;
+  signature_hash?: string;
+  [key: string]: any;
+}
+
 export interface TemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
-  format?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
+  format?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO' | 'LOCATION';
   text?: string;
   example?: {
+    header_text?: string[];
     header_handle?: string[];
+    header_url?: string[];
     body_text?: string[][];
+    [key: string]: any;
   };
-  buttons?: Array<{
-    type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | string;
-    text: string;
-    url?: string;
-    phone_number?: string;
-  }>;
+  buttons?: TemplateButton[];
   [key: string]: any;
 }
 
@@ -151,9 +162,11 @@ export interface WhatsAppTemplate {
   id?: string;
   name: string;
   language?: string;
-  status?: 'APPROVED' | 'PENDING' | 'REJECTED' | string;
+  status?: 'APPROVED' | 'PENDING' | 'REJECTED' | 'PAUSED' | 'IN_APPEAL' | 'DELETED' | string;
   category?: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | string;
   components: TemplateComponent[];
+  rejected_reason?: string;
+  quality_score?: { score: string };
   [key: string]: any;
 }
 

@@ -105,6 +105,9 @@ export const channelsApi = {
   getTemplates: (channelId: string) =>
     apiClient.get<WhatsAppTemplate[]>(`/channels/${channelId}/templates`),
 
+  listTemplates: (channelId: string) =>
+    apiClient.get<WhatsAppTemplate[]>(`/channels/${channelId}/templates`),
+
   createTemplate: (
     channelId: string,
     data: {
@@ -113,7 +116,12 @@ export const channelsApi = {
       category: string;
       components: any[];
     }
-  ) => apiClient.post<WhatsAppTemplate>(`/channels/${channelId}/templates`, data),
+  ) => apiClient.post<{ id: string; status: string; category: string }>(`/channels/${channelId}/templates`, data),
+
+  deleteTemplate: (channelId: string, templateName: string, templateId?: string) =>
+    apiClient.delete<{ success: boolean }>(
+      `/channels/${channelId}/templates/${encodeURIComponent(templateName || 'default')}${templateId ? `?templateId=${encodeURIComponent(templateId)}` : ''}`
+    ),
 };
 
 // ==================== WHATSAPP ONBOARDING API ====================

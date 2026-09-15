@@ -52,6 +52,8 @@ import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
+import { WhatsAppTemplatesManagerModal } from '../components/channels/WhatsAppTemplatesManagerModal';
+import { WhatsAppTemplateBuilderModal } from '../components/channels/WhatsAppTemplateBuilderModal';
 
 declare global {
   interface Window {
@@ -120,8 +122,6 @@ export const ChannelsPage: React.FC = () => {
   const [channelToDisconnect, setChannelToDisconnect] = useState<Channel | null>(null);
 
   const [deepLinkData, setDeepLinkData] = useState<DeepLinkResponse | null>(null);
-  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
 
   // Embedded signup form state
   const [embeddedForm, setEmbeddedForm] = useState({
@@ -145,14 +145,6 @@ export const ChannelsPage: React.FC = () => {
     accessToken: '',
   });
   const [isSubmittingManual, setIsSubmittingManual] = useState(false);
-
-  // Create template form state
-  const [newTemplate, setNewTemplate] = useState({
-    name: '',
-    category: 'MARKETING',
-    language: 'en_US',
-    bodyText: '',
-  });
 
   const { showToast } = useToast();
 
@@ -499,19 +491,9 @@ export const ChannelsPage: React.FC = () => {
   };
 
   // Open Templates modal
-  const handleOpenTemplatesModal = async (channel: Channel) => {
+  const handleOpenTemplatesModal = (channel: Channel) => {
     setActiveChannel(channel);
     setIsTemplatesModalOpen(true);
-    setIsLoadingTemplates(true);
-    try {
-      const list = await channelsApi.getTemplates(channel.id);
-      setTemplates(list);
-    } catch (err: any) {
-      const errMsg = err?.response?.data?.error || (err instanceof Error ? err.message : 'Failed to fetch templates');
-      showToast(errMsg, 'error');
-    } finally {
-      setIsLoadingTemplates(false);
-    }
   };
 
   // Submit Embedded Signup Callback (Manual / Advanced fallback)
@@ -565,31 +547,6 @@ export const ChannelsPage: React.FC = () => {
       showToast(err instanceof Error ? err.message : 'Failed to create channel', 'error');
     } finally {
       setIsSubmittingManual(false);
-    }
-  };
-
-  // Submit Template Creation
-  const handleCreateTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeChannel) return;
-
-    try {
-      await channelsApi.createTemplate(activeChannel.id, {
-        name: newTemplate.name.toLowerCase().replace(/\s+/g, '_'),
-        category: newTemplate.category,
-        language: newTemplate.language,
-        components: [
-          {
-            type: 'BODY',
-            text: newTemplate.bodyText,
-          },
-        ],
-      });
-      showToast('Template submitted to Meta for approval!', 'success');
-      setIsCreateTemplateModalOpen(false);
-      handleOpenTemplatesModal(activeChannel);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to create template', 'error');
     }
   };
 
@@ -1692,137 +1649,28 @@ export const ChannelsPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* ==================== MODAL: WhatsApp Templates ==================== */}
-      <Modal
+      {/* ==================== MODAL: WhatsApp Templates Manager ==================== */}
+      <WhatsAppTemplatesManagerModal
         isOpen={isTemplatesModalOpen}
         onClose={() => setIsTemplatesModalOpen(false)}
-        title={`${activeChannel?.displayName || activeChannel?.display_name || 'WhatsApp'} - Templates`}
-        description="View approved message templates from Meta"
-        maxWidth="2xl"
-      >
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-500 font-medium">
-              Templates are required for outbound broadcast campaigns outside the 24-hour window.
-            </span>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsCreateTemplateModalOpen(true)}
-              icon={<Plus className="w-3.5 h-3.5" />}
-            >
-              New Template
-            </Button>
-          </div>
+        channel={activeChannel}
+        onOpenCreate={() => {
+          setIsCreateTemplateModalOpen(true);
+        }}
+      />
 
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl">
-            {isLoadingTemplates ? (
-              <div className="py-12">
-                <Spinner size="md" />
-              </div>
-            ) : templates.length === 0 ? (
-              <div className="py-12 text-center text-xs text-gray-400">
-                No templates found on this WABA.
-              </div>
-            ) : (
-              templates.map((tpl) => (
-                <div key={tpl.id || tpl.name} className="p-4 space-y-1.5 bg-white">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900">{tpl.name}</span>
-                    <Badge
-                      variant={
-                        tpl.status === 'APPROVED' ? 'success' : tpl.status === 'PENDING' ? 'warning' : 'danger'
-                      }
-                      size="sm"
-                    >
-                      {tpl.status}
-                    </Badge>
-                  </div>
-                  <p className="text-[11px] text-gray-500">
-                    Category: <span className="font-semibold">{tpl.category}</span> • Language:{' '}
-                    <span className="font-semibold">{tpl.language}</span>
-                  </p>
-                  <div className="text-xs text-gray-700 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mt-1">
-                    {tpl.components?.find((c) => c.type === 'BODY')?.text || 'Template Body'}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button variant="outline" onClick={() => setIsTemplatesModalOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ==================== MODAL: Create New Template ==================== */}
-      <Modal
-        isOpen={isCreateTemplateModalOpen}
-        onClose={() => setIsCreateTemplateModalOpen(false)}
-        title="Create WhatsApp Template"
-        description="Submit a new template to Meta for review"
-      >
-        <form onSubmit={handleCreateTemplate} className="space-y-4">
-          <Input
-            label="Template Name"
-            placeholder="e.g. order_confirmation"
-            value={newTemplate.name}
-            onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
-            helperText="Lowercase alphanumeric and underscores only"
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                Category
-              </label>
-              <select
-                value={newTemplate.category}
-                onChange={(e) => setNewTemplate({ ...newTemplate, category: e.target.value })}
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white"
-              >
-                <option value="MARKETING">MARKETING</option>
-                <option value="UTILITY">UTILITY</option>
-                <option value="AUTHENTICATION">AUTHENTICATION</option>
-              </select>
-            </div>
-
-            <Input
-              label="Language"
-              value={newTemplate.language}
-              onChange={(e) => setNewTemplate({ ...newTemplate, language: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              Body Text
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Hi {{1}}, thank you for your order #{{2}}."
-              value={newTemplate.bodyText}
-              onChange={(e) => setNewTemplate({ ...newTemplate, bodyText: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 p-3 text-xs bg-white focus:outline-none focus:border-primary-500"
-              required
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3">
-            <Button variant="outline" type="button" onClick={() => setIsCreateTemplateModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit">
-              Submit to Meta
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {/* ==================== MODAL: Create New WhatsApp HSM Template ==================== */}
+      {activeChannel && (
+        <WhatsAppTemplateBuilderModal
+          isOpen={isCreateTemplateModalOpen}
+          onClose={() => setIsCreateTemplateModalOpen(false)}
+          channelId={activeChannel.id}
+          channelName={activeChannel.displayName || activeChannel.display_name}
+          onSuccess={() => {
+            setIsTemplatesModalOpen(true);
+          }}
+        />
+      )}
 
       {/* ==================== MODAL: Channel Settings & Provider Status ==================== */}
       <Modal
