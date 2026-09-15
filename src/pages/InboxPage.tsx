@@ -33,6 +33,7 @@ import {
   FileCheck,
   Globe,
   MessageCircle,
+  Bot,
 } from 'lucide-react';
 import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -130,6 +131,7 @@ export const InboxPage: React.FC = () => {
   const [newDealTitle, setNewDealTitle] = useState('');
   const [newDealValue, setNewDealValue] = useState('10000'); // in cents ($100)
   const [newDealStage, setNewDealStage] = useState('Lead');
+  const [isResumingBot, setIsResumingBot] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef<number | null>(null);
@@ -779,6 +781,19 @@ export const InboxPage: React.FC = () => {
       showToast('Deal created successfully', 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to create deal', 'error');
+    }
+  };
+
+  const handleResumeBot = async () => {
+    if (!selectedConvId) return;
+    setIsResumingBot(true);
+    try {
+      await conversationsApi.resumeBot(selectedConvId);
+      showToast('AI Bot / Flow reply mode resumed for this conversation', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to resume AI bot', 'error');
+    } finally {
+      setIsResumingBot(false);
     }
   };
 
@@ -1561,6 +1576,16 @@ export const InboxPage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleResumeBot}
+                  disabled={isResumingBot}
+                  className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-xl bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 flex items-center gap-1.5 shadow-2xs transition-all disabled:opacity-50"
+                  title="Transfer back to autonomous AI bot reply mode"
+                >
+                  <Bot className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">{isResumingBot ? 'Resuming...' : 'Resume AI Bot'}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {

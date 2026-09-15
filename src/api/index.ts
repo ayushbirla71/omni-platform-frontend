@@ -188,6 +188,9 @@ export const conversationsApi = {
 
   updateStatus: (conversationId: string, status: 'open' | 'pending' | 'closed') =>
     apiClient.patch<void>(`/conversations/${conversationId}/status`, { status }),
+
+  resumeBot: (conversationId: string) =>
+    apiClient.post<{ success: boolean; message: string }>(`/conversations/${conversationId}/resume-bot`),
 };
 
 // ==================== FLOWS API ====================

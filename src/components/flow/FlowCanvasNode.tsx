@@ -99,15 +99,14 @@ export const FlowCanvasNode: React.FC<NodeProps<FlowNodeData>> = memo(({ data, s
       )}
     >
       {/* Top Input Handle for incoming connections */}
-      {node.type !== 'input' && !isEntry && (
+      {!isEntry ? (
         <Handle
           type="target"
           position={Position.Top}
           id="target"
           className="w-3 h-3 bg-gray-400 border-2 border-white rounded-full hover:scale-125 transition-transform"
         />
-      )}
-      {isEntry && (
+      ) : (
         <Handle
           type="target"
           position={Position.Top}
