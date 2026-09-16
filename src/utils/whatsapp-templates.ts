@@ -302,7 +302,12 @@ export function resolveTemplateMessage(options: {
         }
       } else if (comp.type === 'BUTTONS') {
         if (!buttons || buttons.length === 0) {
-          buttons = comp.buttons || [];
+          buttons = (comp.buttons || []).map((b) => ({
+            type: b.type,
+            text: b.text || '',
+            url: b.url,
+            phone_number: b.phone_number || b.phoneNumber,
+          }));
         }
       }
     }

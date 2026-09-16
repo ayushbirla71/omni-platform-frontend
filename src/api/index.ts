@@ -10,6 +10,7 @@ import type {
   WhatsAppOnboardingConfig,
   OnboardingCapacity,
   WhatsAppTemplate,
+  CreateWhatsAppTemplatePayload,
   Contact,
   ImportContactsResult,
   Conversation,
@@ -107,12 +108,7 @@ export const channelsApi = {
 
   createTemplate: (
     channelId: string,
-    data: {
-      name: string;
-      language: string;
-      category: string;
-      components: any[];
-    }
+    data: CreateWhatsAppTemplatePayload
   ) => apiClient.post<WhatsAppTemplate>(`/channels/${channelId}/templates`, data),
 };
 

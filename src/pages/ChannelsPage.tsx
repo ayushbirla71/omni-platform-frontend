@@ -43,6 +43,7 @@ import {
   WebchatWidget as IWebchatWidget,
 } from '../types';
 import { WebchatWidget as LiveWebchatWidgetPreview } from '../components/webchat/WebchatWidget';
+import { WhatsAppTemplateCreateModal } from '../components/channels/WhatsAppTemplateCreateModal';
 import { cn } from '../lib/utils';
 import { getTierInfo, ALL_TIERS } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
@@ -145,14 +146,6 @@ export const ChannelsPage: React.FC = () => {
     accessToken: '',
   });
   const [isSubmittingManual, setIsSubmittingManual] = useState(false);
-
-  // Create template form state
-  const [newTemplate, setNewTemplate] = useState({
-    name: '',
-    category: 'MARKETING',
-    language: 'en_US',
-    bodyText: '',
-  });
 
   const { showToast } = useToast();
 
@@ -565,31 +558,6 @@ export const ChannelsPage: React.FC = () => {
       showToast(err instanceof Error ? err.message : 'Failed to create channel', 'error');
     } finally {
       setIsSubmittingManual(false);
-    }
-  };
-
-  // Submit Template Creation
-  const handleCreateTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeChannel) return;
-
-    try {
-      await channelsApi.createTemplate(activeChannel.id, {
-        name: newTemplate.name.toLowerCase().replace(/\s+/g, '_'),
-        category: newTemplate.category,
-        language: newTemplate.language,
-        components: [
-          {
-            type: 'BODY',
-            text: newTemplate.bodyText,
-          },
-        ],
-      });
-      showToast('Template submitted to Meta for approval!', 'success');
-      setIsCreateTemplateModalOpen(false);
-      handleOpenTemplatesModal(activeChannel);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to create template', 'error');
     }
   };
 
@@ -1696,14 +1664,14 @@ export const ChannelsPage: React.FC = () => {
       <Modal
         isOpen={isTemplatesModalOpen}
         onClose={() => setIsTemplatesModalOpen(false)}
-        title={`${activeChannel?.displayName || activeChannel?.display_name || 'WhatsApp'} - Templates`}
-        description="View approved message templates from Meta"
-        maxWidth="2xl"
+        title={`${activeChannel?.displayName || activeChannel?.display_name || 'WhatsApp'} - Message Templates`}
+        description="View approved message templates synchronized with Meta WABA"
+        maxWidth="4xl"
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs text-gray-500 font-medium">
-              Templates are required for outbound broadcast campaigns outside the 24-hour window.
+              Templates are required for outbound broadcast campaigns outside the 24-hour service window.
             </span>
             <Button
               variant="primary"
@@ -1715,38 +1683,105 @@ export const ChannelsPage: React.FC = () => {
             </Button>
           </div>
 
-          <div className="max-h-96 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-xl">
+          <div className="max-h-[500px] overflow-y-auto space-y-3 pr-1">
             {isLoadingTemplates ? (
-              <div className="py-12">
+              <div className="py-16 text-center">
                 <Spinner size="md" />
+                <p className="text-xs text-gray-400 mt-2">Loading templates from Meta Graph API...</p>
               </div>
             ) : templates.length === 0 ? (
-              <div className="py-12 text-center text-xs text-gray-400">
-                No templates found on this WABA.
+              <div className="py-16 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                <FileText className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                <p className="font-semibold text-gray-600">No message templates found</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Click "New Template" above to create and submit one to Meta.</p>
               </div>
             ) : (
-              templates.map((tpl) => (
-                <div key={tpl.id || tpl.name} className="p-4 space-y-1.5 bg-white">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-900">{tpl.name}</span>
-                    <Badge
-                      variant={
-                        tpl.status === 'APPROVED' ? 'success' : tpl.status === 'PENDING' ? 'warning' : 'danger'
-                      }
-                      size="sm"
-                    >
-                      {tpl.status}
-                    </Badge>
+              templates.map((tpl) => {
+                const headerComp = tpl.components?.find((c) => c.type === 'HEADER');
+                const bodyComp = tpl.components?.find((c) => c.type === 'BODY');
+                const footerComp = tpl.components?.find((c) => c.type === 'FOOTER');
+                const buttonsComp = tpl.components?.find((c) => c.type === 'BUTTONS');
+
+                return (
+                  <div
+                    key={tpl.id || tpl.name}
+                    className="p-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 shadow-2xs space-y-2.5 transition-all hover:border-gray-300"
+                  >
+                    {/* Header line: Name, Category, Language & Status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">
+                          {tpl.name}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/40">
+                          {tpl.category}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono uppercase bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300">
+                          {tpl.language}
+                        </span>
+                        {headerComp?.format && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                            Header: {headerComp.format}
+                          </span>
+                        )}
+                      </div>
+
+                      <Badge
+                        variant={
+                          tpl.status === 'APPROVED'
+                            ? 'success'
+                            : tpl.status === 'PENDING'
+                            ? 'warning'
+                            : 'danger'
+                        }
+                        size="sm"
+                      >
+                        {tpl.status}
+                      </Badge>
+                    </div>
+
+                    {/* Template Card Content Preview */}
+                    <div className="rounded-lg bg-gray-50 dark:bg-slate-900/60 p-3 border border-gray-100 dark:border-slate-700/60 space-y-2">
+                      {headerComp && headerComp.format === 'TEXT' && headerComp.text && (
+                        <p className="text-xs font-bold text-gray-900 dark:text-white border-b border-gray-200/60 dark:border-slate-700/60 pb-1.5">
+                          {headerComp.text}
+                        </p>
+                      )}
+
+                      {headerComp && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComp.format || '') && (
+                        <div className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 px-2 py-1 rounded border border-indigo-100 dark:border-indigo-900/40 flex items-center space-x-1.5">
+                          <span>Media Attachment ({headerComp.format})</span>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-gray-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                        {bodyComp?.text || 'Template Body'}
+                      </p>
+
+                      {footerComp?.text && (
+                        <p className="text-[10.5px] text-gray-500 dark:text-slate-400 pt-1 border-t border-gray-200/50 dark:border-slate-700/40">
+                          {footerComp.text}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Interactive Buttons Preview */}
+                    {buttonsComp?.buttons && buttonsComp.buttons.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {buttonsComp.buttons.map((btn, bIdx) => (
+                          <span
+                            key={`btn-${bIdx}`}
+                            className="inline-flex items-center px-2 py-1 rounded-md text-[10.5px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40"
+                          >
+                            <span className="font-semibold mr-1">[{btn.type.replace('_', ' ')}]</span>
+                            <span>{btn.text || btn.code || btn.url || btn.phoneNumber || 'Button'}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <p className="text-[11px] text-gray-500">
-                    Category: <span className="font-semibold">{tpl.category}</span> • Language:{' '}
-                    <span className="font-semibold">{tpl.language}</span>
-                  </p>
-                  <div className="text-xs text-gray-700 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mt-1">
-                    {tpl.components?.find((c) => c.type === 'BODY')?.text || 'Template Body'}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -1758,71 +1793,18 @@ export const ChannelsPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* ==================== MODAL: Create New Template ==================== */}
-      <Modal
+      {/* ==================== MODAL: Create New WhatsApp Template (Full Options & Live Preview) ==================== */}
+      <WhatsAppTemplateCreateModal
         isOpen={isCreateTemplateModalOpen}
         onClose={() => setIsCreateTemplateModalOpen(false)}
-        title="Create WhatsApp Template"
-        description="Submit a new template to Meta for review"
-      >
-        <form onSubmit={handleCreateTemplate} className="space-y-4">
-          <Input
-            label="Template Name"
-            placeholder="e.g. order_confirmation"
-            value={newTemplate.name}
-            onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
-            helperText="Lowercase alphanumeric and underscores only"
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                Category
-              </label>
-              <select
-                value={newTemplate.category}
-                onChange={(e) => setNewTemplate({ ...newTemplate, category: e.target.value })}
-                className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white"
-              >
-                <option value="MARKETING">MARKETING</option>
-                <option value="UTILITY">UTILITY</option>
-                <option value="AUTHENTICATION">AUTHENTICATION</option>
-              </select>
-            </div>
-
-            <Input
-              label="Language"
-              value={newTemplate.language}
-              onChange={(e) => setNewTemplate({ ...newTemplate, language: e.target.value })}
-              required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              Body Text
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Hi {{1}}, thank you for your order #{{2}}."
-              value={newTemplate.bodyText}
-              onChange={(e) => setNewTemplate({ ...newTemplate, bodyText: e.target.value })}
-              className="w-full rounded-xl border border-gray-200 p-3 text-xs bg-white focus:outline-none focus:border-primary-500"
-              required
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3">
-            <Button variant="outline" type="button" onClick={() => setIsCreateTemplateModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit">
-              Submit to Meta
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        channel={activeChannel}
+        onSuccess={() => {
+          if (activeChannel) {
+            handleOpenTemplatesModal(activeChannel);
+          }
+        }}
+        showToast={showToast}
+      />
 
       {/* ==================== MODAL: Channel Settings & Provider Status ==================== */}
       <Modal

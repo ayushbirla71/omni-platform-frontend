@@ -119,21 +119,37 @@ export interface OnboardingCapacity {
 }
 
 // WhatsApp Templates
+export type TemplateCategory = 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+export type TemplateHeaderFormat = 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
+
+export interface TemplateButton {
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'COPY_CODE' | string;
+  text?: string;
+  url?: string;
+  phone_number?: string;
+  phoneNumber?: string;
+  code?: string;
+  example?: string | string[];
+}
+
 export interface TemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
   format?: 'TEXT' | 'IMAGE' | 'DOCUMENT' | 'VIDEO';
   text?: string;
   example?: {
     header_handle?: string[];
+    header_text?: string[];
     body_text?: string[][];
   };
-  buttons?: Array<{
-    type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | string;
-    text: string;
-    url?: string;
-    phone_number?: string;
-  }>;
+  buttons?: TemplateButton[];
   [key: string]: any;
+}
+
+export interface CreateWhatsAppTemplatePayload {
+  name: string;
+  language: string;
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION' | string;
+  components: TemplateComponent[];
 }
 
 export interface UploadMediaResult {

@@ -611,7 +611,7 @@ const FlowEditorCanvas: React.FC = () => {
     if (buttonsComp?.buttons && buttonsComp.buttons.length > 0) {
       setTemplateButtons(
         buttonsComp.buttons.map((btn) => ({
-          buttonText: btn.text,
+          buttonText: btn.text || '',
           next: '',
         }))
       );
