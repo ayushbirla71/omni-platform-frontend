@@ -43,6 +43,11 @@ import {
   Brain,
   Split,
   ShieldAlert,
+  Signal,
+  Wifi,
+  Battery,
+  Eye,
+  CornerDownRight,
 } from 'lucide-react';
 import { flowsApi, channelsApi, knowledgeBasesApi, contactsApi } from '../api';
 import type {
@@ -167,6 +172,18 @@ const FlowEditorCanvas: React.FC = () => {
   const [templateParams, setTemplateParams] = useState<Array<{ key: string; value: string }>>([]);
   const [templateButtons, setTemplateButtons] = useState<Array<{ buttonText: string; next: string }>>([]);
   const [templateSaveAs, setTemplateSaveAs] = useState('');
+  const [previewMode, setPreviewMode] = useState<'sample' | 'raw'>('sample');
+
+  // Available target nodes on canvas for next step and button routing
+  const availableTargetNodes = useMemo(() => {
+    return nodes
+      .map((n) => ({
+        id: n.id,
+        type: n.data.node.type,
+        label: `${n.id} (${n.data.node.type})`,
+      }))
+      .filter((n) => n.id !== editingNodeId);
+  }, [nodes, editingNodeId]);
 
   // Filter available templates strictly to APPROVED templates from Meta
   const approvedTemplates = useMemo(() => {
@@ -956,6 +973,104 @@ const FlowEditorCanvas: React.FC = () => {
       )
     );
 
+    // Synchronize ReactFlow visual edges with Next Step & Branch routing configurations
+    setEdges((currentEdges) => {
+      const updatedEdges = currentEdges.filter(
+        (e) =>
+          !(
+            e.source === editingNodeId &&
+            (e.sourceHandle === 'continue' ||
+              e.sourceHandle === 'delivered' ||
+              e.sourceHandle === 'default' ||
+              e.sourceHandle?.startsWith('btn_') ||
+              e.sourceHandle?.startsWith('branch_') ||
+              e.sourceHandle?.startsWith('intent_'))
+          )
+      );
+
+      // 1. Direct Next Step Route (Continue / Default Next Step)
+      if (nodeNext.trim()) {
+        updatedEdges.push({
+          id: `e-${editingNodeId}-continue-${nodeNext.trim()}`,
+          source: editingNodeId,
+          target: nodeNext.trim(),
+          sourceHandle: 'continue',
+          type: 'custom',
+          label: 'Continue',
+        });
+      }
+
+      // 2. Template Quick-Reply Buttons
+      if (nodeType === 'template') {
+        templateButtons.forEach((btn, bIdx) => {
+          if (btn.next?.trim()) {
+            updatedEdges.push({
+              id: `e-${editingNodeId}-btn-${bIdx}-${btn.next.trim()}`,
+              source: editingNodeId,
+              target: btn.next.trim(),
+              sourceHandle: `btn_${bIdx}`,
+              type: 'custom',
+              label: btn.buttonText || `Button ${bIdx + 1}`,
+            });
+          }
+        });
+      }
+
+      // 3. Condition Branches & Default Route
+      if (nodeType === 'condition') {
+        conditionBranches.forEach((br, bIdx) => {
+          if (br.next?.trim()) {
+            updatedEdges.push({
+              id: `e-${editingNodeId}-branch-${bIdx}-${br.next.trim()}`,
+              source: editingNodeId,
+              target: br.next.trim(),
+              sourceHandle: `branch_${bIdx}`,
+              type: 'custom',
+              label: `== "${br.equals}"`,
+            });
+          }
+        });
+        if (conditionDefault.trim()) {
+          updatedEdges.push({
+            id: `e-${editingNodeId}-default-${conditionDefault.trim()}`,
+            source: editingNodeId,
+            target: conditionDefault.trim(),
+            sourceHandle: 'default',
+            type: 'custom',
+            label: 'Default',
+          });
+        }
+      }
+
+      // 4. Intent Router Branches & Default Route
+      if (nodeType === 'intent_router') {
+        intentBranches.forEach((ibr, iIdx) => {
+          if (ibr.next?.trim()) {
+            updatedEdges.push({
+              id: `e-${editingNodeId}-intent-${iIdx}-${ibr.next.trim()}`,
+              source: editingNodeId,
+              target: ibr.next.trim(),
+              sourceHandle: `intent_${iIdx}`,
+              type: 'custom',
+              label: `Intent: "${ibr.intent}"`,
+            });
+          }
+        });
+        if (intentDefault.trim()) {
+          updatedEdges.push({
+            id: `e-${editingNodeId}-default-${intentDefault.trim()}`,
+            source: editingNodeId,
+            target: intentDefault.trim(),
+            sourceHandle: 'default',
+            type: 'custom',
+            label: 'Default',
+          });
+        }
+      }
+
+      return updatedEdges;
+    });
+
     setIsModalOpen(false);
   };
 
@@ -1044,12 +1159,31 @@ const FlowEditorCanvas: React.FC = () => {
 
   const isValid = nodes.length > 0 && Boolean(entryNodeId);
 
-  // Helper for live preview body interpolation
+  // Realistic sample interpolation values for smartphone chat simulation
+  const SAMPLE_INTERPOLATION_VALUES: Record<string, string> = {
+    '{{contact.name}}': 'Alex Johnson',
+    '{{contact.phone}}': '+1 (555) 019-2834',
+    '{{contact.email}}': 'alex.johnson@example.com',
+    '{{contact.id}}': 'cnt_89421',
+    '{{last_message}}': 'I would like to check my order status',
+    '{{ai_response}}': 'Your order #ORD-9821 has been shipped via Express delivery!',
+    '{{detected_intent}}': 'order_status',
+    '{{detected_sentiment}}': 'positive',
+    '{{deal.title}}': 'Enterprise Cloud License',
+    '{{deal.value}}': '$12,500.00',
+    '{{deal.stage}}': 'Proposal Sent',
+    '{{contact.attributes.company}}': 'Acme Corp Global',
+    '{{contact.attributes.product}}': 'Smart Analytics Pro',
+    '{{contact.attributes.price}}': '$499.00',
+    '{{contact.attributes.order_id}}': 'ORD-99281',
+  };
+
+  // Helper for live preview body interpolation with Sample Data vs Raw Tags toggle
   const previewBodyText = useMemo(() => {
     const rawBody = selectedMetaTemplate?.components?.find((c) => c.type === 'BODY')?.text;
     if (!rawBody) {
       if (templateName) {
-        return `Hi {{1}}, this is an official update regarding your request.`;
+        return `Hi ${previewMode === 'sample' ? 'Alex Johnson' : '{{1}}'}, this is an official update regarding your request.`;
       }
       return 'Select or enter an approved WhatsApp template to preview the message content.';
     }
@@ -1057,10 +1191,23 @@ const FlowEditorCanvas: React.FC = () => {
     let interpolated = rawBody;
     templateParams.forEach((p) => {
       const regex = new RegExp(`\\{\\{\\s*${p.key}\\s*\\}\\}`, 'g');
-      interpolated = interpolated.replace(regex, p.value ? p.value : `[${p.key}]`);
+      let val = p.value;
+      if (previewMode === 'sample') {
+        if (val && SAMPLE_INTERPOLATION_VALUES[val]) {
+          val = SAMPLE_INTERPOLATION_VALUES[val];
+        } else if (val && val.startsWith('{{') && val.endsWith('}}')) {
+          const innerKey = val.slice(2, -2).trim();
+          val = innerKey.replace('contact.attributes.', '').replace('contact.', '').toUpperCase();
+        } else if (!val) {
+          val = `[Param ${p.key}]`;
+        }
+      } else {
+        val = val || `{{${p.key}}}`;
+      }
+      interpolated = interpolated.replace(regex, val);
     });
     return interpolated;
-  }, [selectedMetaTemplate, templateParams, templateName]);
+  }, [selectedMetaTemplate, templateParams, templateName, previewMode]);
 
   const previewFooterText = useMemo(() => {
     return selectedMetaTemplate?.components?.find((c) => c.type === 'FOOTER')?.text;
@@ -1161,7 +1308,7 @@ const FlowEditorCanvas: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         title={`Configure Node: ${editingNodeId}`}
         description="Set up step properties, Meta approved WhatsApp templates, AI RAG agents, intent routers, delayed timers, and retry rules."
-        maxWidth={nodeType === 'template' || nodeType === 'ai_agent' || nodeType === 'intent_router' ? '2xl' : 'lg'}
+        maxWidth={nodeType === 'template' ? '7xl' : (nodeType === 'ai_agent' || nodeType === 'intent_router' ? '4xl' : 'lg')}
       >
         <form onSubmit={handleSaveModal} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -1220,7 +1367,7 @@ const FlowEditorCanvas: React.FC = () => {
 
           {/* Form fields: Message */}
           {nodeType === 'message' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Message Text
@@ -1230,14 +1377,36 @@ const FlowEditorCanvas: React.FC = () => {
                   placeholder="Hi {{contact.name}}, here is your update..."
                   value={nodeText}
                   onChange={(e) => setNodeText(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 p-3 text-xs focus:outline-none focus:border-primary-500"
+                  className="w-full rounded-xl border border-gray-200 p-3 text-xs focus:outline-none focus:border-primary-500 font-sans leading-relaxed"
                   required
                 />
               </div>
 
+              {/* Next Step Transition Selector */}
+              <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/80 space-y-1.5">
+                <label className="text-xs font-bold text-blue-950 flex items-center gap-1.5 uppercase tracking-wider">
+                  <CornerDownRight className="w-3.5 h-3.5 text-blue-600" /> Next Step (Target Node)
+                </label>
+                <p className="text-[11px] text-blue-800">
+                  Select which node executes next after this message is dispatched (or connect manually on canvas).
+                </p>
+                <select
+                  value={nodeNext}
+                  onChange={(e) => setNodeNext(e.target.value)}
+                  className="w-full rounded-xl border border-blue-200 px-3 py-2 text-xs bg-white font-medium text-gray-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                >
+                  <option value="">-- Connect on Canvas (No Direct Transition) --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Automatic Retry on Failure */}
-              <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200/60 space-y-2">
-                <span className="text-xs font-bold text-amber-950 flex items-center gap-1">
+              <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200/60 space-y-2">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1 uppercase tracking-wider">
                   <Repeat className="w-3.5 h-3.5 text-amber-600" /> Automatic Retry on Ecosystem Error
                 </span>
                 <div className="grid grid-cols-2 gap-3">
@@ -1355,6 +1524,33 @@ const FlowEditorCanvas: React.FC = () => {
                       helperText="Stores customer quick-reply text in variables"
                     />
                   </div>
+                </div>
+
+                {/* Next Step (Default Route / On Delivered) */}
+                <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/80 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-blue-950 flex items-center gap-1.5 uppercase tracking-wider">
+                      <CornerDownRight className="w-3.5 h-3.5 text-blue-600" /> Next Step (Default / On Delivered)
+                    </label>
+                    <span className="text-[10px] font-mono text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded-full font-semibold">
+                      Port: continue
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-blue-800">
+                    Determines which step to execute automatically after this template is sent to the recipient (or branch via button clicks below).
+                  </p>
+                  <select
+                    value={nodeNext}
+                    onChange={(e) => setNodeNext(e.target.value)}
+                    className="w-full rounded-xl border border-blue-200 px-3 py-2 text-xs bg-white font-medium text-gray-800 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  >
+                    <option value="">-- Connect on Canvas (No Default Transition) --</option>
+                    {availableTargetNodes.map((target) => (
+                      <option key={target.id} value={target.id}>
+                        👉 Step: {target.id} ({target.type})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* 1. Header Component Configuration */}
@@ -1631,55 +1827,25 @@ const FlowEditorCanvas: React.FC = () => {
                           ))}
                         </div>
                       </div>
-
-                      {/* Live Template Message Preview */}
-                      {selectedMetaTemplate && (() => {
-                        const bodyComp = selectedMetaTemplate.components?.find((c) => c.type === 'BODY');
-                        const bodyText = bodyComp?.text;
-                        if (!bodyText) return null;
-
-                        let previewText = bodyText;
-                        templateParams.forEach((p) => {
-                          const placeholder = `{{${p.key}}}`;
-                          const replacement = p.value ? p.value : `[Missing {{${p.key}}}]`;
-                          previewText = previewText.split(placeholder).join(replacement);
-                        });
-
-                        return (
-                          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-1.5">
-                            <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-950">
-                              <span className="flex items-center gap-1">
-                                <Smartphone className="w-3.5 h-3.5 text-emerald-600" /> Live Message Preview
-                              </span>
-                              <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded font-mono">
-                                {selectedMetaTemplate.name}
-                              </span>
-                            </div>
-                            <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
-                              {previewText}
-                            </div>
-                          </div>
-                        );
-                      })()}
                     </div>
                   )}
                 </div>
 
-                {/* 3. Quick-Reply Button Ports */}
+                {/* 3. Quick-Reply Button Routing Ports */}
                 <div className="p-3.5 bg-purple-50/60 rounded-2xl border border-purple-200/80 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-xs font-bold text-purple-950 flex items-center gap-1 uppercase tracking-wider">
-                        <MousePointerClick className="w-3.5 h-3.5 text-purple-600" /> Quick-Reply Button Ports
+                        <MousePointerClick className="w-3.5 h-3.5 text-purple-600" /> Quick-Reply Button Routing
                       </span>
                       <p className="text-[11px] text-purple-800">
-                        Each button exposes an interactive output handle (<code>btn_0</code>, <code>btn_1</code>) on canvas.
+                        Configure interactive quick-reply buttons and assign target destination steps for each branch.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setTemplateButtons([...templateButtons, { buttonText: '', next: '' }])}
-                      className="text-xs text-purple-700 hover:text-purple-900 font-semibold flex items-center gap-1 bg-purple-100 px-2 py-1 rounded-lg transition-colors"
+                      className="text-xs text-purple-700 hover:text-purple-900 font-semibold flex items-center gap-1 bg-purple-100 px-2.5 py-1 rounded-lg transition-colors shadow-2xs"
                     >
                       <Plus className="w-3.5 h-3.5" /> Add Button
                     </button>
@@ -1690,29 +1856,55 @@ const FlowEditorCanvas: React.FC = () => {
                       No interactive quick-reply buttons configured for this template.
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {templateButtons.map((btn, idx) => (
-                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-purple-100 shadow-2xs">
-                          <span className="text-xs font-mono font-bold text-purple-700 px-1.5 py-0.5 rounded bg-purple-50 shrink-0">
-                            Port: btn_{idx}
-                          </span>
-                          <input
-                            placeholder="Button Text (e.g. Yes, Confirm Order)"
-                            value={btn.buttonText}
-                            onChange={(e) => {
-                              const copy = [...templateButtons];
-                              copy[idx].buttonText = e.target.value;
-                              setTemplateButtons(copy);
-                            }}
-                            className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white focus:outline-none focus:border-purple-500 font-medium"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setTemplateButtons(templateButtons.filter((_, i) => i !== idx))}
-                            className="p-1 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div key={idx} className="bg-white p-2.5 rounded-xl border border-purple-100 shadow-2xs space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-purple-700 px-2 py-1 rounded-lg bg-purple-50 shrink-0 border border-purple-200/60">
+                              Port: btn_{idx}
+                            </span>
+                            <input
+                              placeholder="Button Text (e.g. Yes, Confirm Order)"
+                              value={btn.buttonText}
+                              onChange={(e) => {
+                                const copy = [...templateButtons];
+                                copy[idx].buttonText = e.target.value;
+                                setTemplateButtons(copy);
+                              }}
+                              className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-purple-500 font-medium"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setTemplateButtons(templateButtons.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                              title="Remove button"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Target Node Selector for this button */}
+                          <div className="flex items-center gap-2 pt-1 border-t border-purple-50">
+                            <span className="text-[10px] font-semibold text-purple-900 shrink-0 flex items-center gap-1">
+                              <CornerDownRight className="w-3 h-3 text-purple-600" /> On Tap Route To:
+                            </span>
+                            <select
+                              value={btn.next || ''}
+                              onChange={(e) => {
+                                const copy = [...templateButtons];
+                                copy[idx].next = e.target.value;
+                                setTemplateButtons(copy);
+                              }}
+                              className="flex-1 rounded-lg border border-purple-200 px-2.5 py-1 text-xs bg-purple-50/40 text-gray-800 font-medium focus:outline-none focus:border-purple-500"
+                            >
+                              <option value="">-- Connect on Canvas (Port btn_{idx}) --</option>
+                              {availableTargetNodes.map((target) => (
+                                <option key={target.id} value={target.id}>
+                                  👉 Step: {target.id} ({target.type})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1746,31 +1938,69 @@ const FlowEditorCanvas: React.FC = () => {
                 </div>
               </div>
 
-              {/* Right Column: Live WhatsApp Chat Bubble Preview */}
+              {/* Right Column: Live WhatsApp Smartphone Chat Bubble Preview */}
               <div className="lg:col-span-5 flex flex-col items-center">
-                <div className="w-full sticky top-0 bg-[#efeae2] rounded-3xl p-4 border border-gray-300 shadow-inner flex flex-col space-y-3 min-h-[460px]">
-                  {/* WhatsApp Simulation Top Header */}
-                  <div className="bg-[#008069] text-white p-2.5 rounded-2xl flex items-center justify-between shadow-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border border-white/30">
-                        WA
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs font-bold">Business WhatsApp</span>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 fill-emerald-400" />
-                        </div>
-                        <span className="text-[9px] text-emerald-100">Official Business Account</span>
-                      </div>
+                <div className="w-full sticky top-0 bg-[#efeae2] rounded-3xl p-4 border border-gray-300 shadow-inner flex flex-col space-y-3 min-h-[520px]">
+                  {/* Smartphone Top Status Bar */}
+                  <div className="flex items-center justify-between px-2 pt-1 pb-1 text-gray-600">
+                    <span className="text-[11px] font-bold tracking-tight">9:41 AM</span>
+                    <div className="flex items-center gap-1.5">
+                      <Signal className="w-3.5 h-3.5 text-gray-600" />
+                      <Wifi className="w-3.5 h-3.5 text-gray-600" />
+                      <Battery className="w-4 h-4 text-emerald-600 fill-emerald-500" />
                     </div>
-                    <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono font-medium">
-                      PREVIEW
-                    </span>
+                  </div>
+
+                  {/* WhatsApp Simulation Top Header with Mode Switcher */}
+                  <div className="bg-[#008069] text-white p-3 rounded-2xl flex flex-col space-y-2 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-emerald-700 flex items-center justify-center font-bold text-xs border border-white/30 text-white">
+                          WA
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-bold">Business WhatsApp</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300 fill-emerald-400" />
+                          </div>
+                          <span className="text-[9px] text-emerald-100">Official Business Account</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-mono font-medium">
+                        PREVIEW
+                      </span>
+                    </div>
+
+                    {/* Preview Mode Switcher (Sample Data vs Raw Tags) */}
+                    <div className="flex items-center bg-emerald-900/40 p-0.5 rounded-xl text-[10px] font-medium border border-emerald-700/50">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMode('sample')}
+                        className={`flex-1 py-1 px-2 rounded-lg flex items-center justify-center gap-1 transition-all ${
+                          previewMode === 'sample'
+                            ? 'bg-white text-emerald-950 font-bold shadow-xs'
+                            : 'text-emerald-100 hover:text-white'
+                        }`}
+                      >
+                        <Sparkles className="w-3 h-3" /> Sample Data
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewMode('raw')}
+                        className={`flex-1 py-1 px-2 rounded-lg flex items-center justify-center gap-1 transition-all ${
+                          previewMode === 'raw'
+                            ? 'bg-white text-emerald-950 font-bold shadow-xs'
+                            : 'text-emerald-100 hover:text-white'
+                        }`}
+                      >
+                        <Eye className="w-3 h-3" /> Raw Tags
+                      </button>
+                    </div>
                   </div>
 
                   {/* WhatsApp Message Bubble Container */}
                   <div className="flex-1 flex flex-col justify-start space-y-2 overflow-y-auto">
-                    <div className="self-start max-w-[94%] bg-white rounded-2xl rounded-tl-xs shadow-md border border-gray-200/60 overflow-hidden">
+                    <div className="self-start max-w-[96%] bg-white rounded-2xl rounded-tl-xs shadow-md border border-gray-200/60 overflow-hidden">
                       {/* Media or Text Header Preview */}
                       {templateHeaderType === 'TEXT' && (templateMedia.headerValue || templateHeaderValue) && (
                         <div className="p-3 pb-1 font-bold text-xs text-gray-900 border-b border-gray-100">
@@ -1797,7 +2027,7 @@ const FlowEditorCanvas: React.FC = () => {
                               <ImageIcon className="w-8 h-8 opacity-70" />
                               <span className="text-[11px] font-semibold">Image Header</span>
                               <span className="text-[9px] font-mono text-gray-600 truncate max-w-[200px]">
-                                {templateMedia.headerValue || templateHeaderValue || '{{variable}} or image link'}
+                                {templateMedia.headerValue || templateHeaderValue || '{{variable}} or uploaded image'}
                               </span>
                             </div>
                           )}
@@ -1846,20 +2076,42 @@ const FlowEditorCanvas: React.FC = () => {
                         <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
                       </div>
 
-                      {/* Buttons in Message Bubble */}
+                      {/* Quick-Reply Buttons in Message Bubble with Routing Badges */}
                       {templateButtons.length > 0 && (
                         <div className="border-t border-gray-100 divide-y divide-gray-100 bg-gray-50/50">
                           {templateButtons.map((b, i) => (
                             <div
                               key={i}
-                              className="py-2 px-3 text-center text-xs font-semibold text-sky-600 flex items-center justify-center gap-1.5"
+                              className="py-2 px-3 text-center text-xs font-semibold text-sky-600 flex items-center justify-between gap-1.5"
                             >
-                              <MousePointerClick className="w-3.5 h-3.5 text-sky-500" />
-                              <span>{b.buttonText || `Button ${i + 1}`}</span>
+                              <div className="flex items-center gap-1.5">
+                                <MousePointerClick className="w-3.5 h-3.5 text-sky-500" />
+                                <span>{b.buttonText || `Button ${i + 1}`}</span>
+                              </div>
+                              {b.next ? (
+                                <span className="text-[9px] font-mono text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded font-bold">
+                                  → {b.next}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-gray-400 font-normal">
+                                  Port: btn_{i}
+                                </span>
+                              )}
                             </div>
                           ))}
                         </div>
                       )}
+                    </div>
+
+                    {/* Default Route Info Tag */}
+                    <div className="flex items-center justify-center gap-1.5 text-[10px] font-medium text-gray-500 pt-1">
+                      <CornerDownRight className="w-3 h-3 text-blue-500" />
+                      <span>
+                        Default Next Step:{' '}
+                        <strong className="text-blue-700 font-mono">
+                          {nodeNext || 'Canvas Connection'}
+                        </strong>
+                      </span>
                     </div>
                   </div>
 
@@ -1873,44 +2125,70 @@ const FlowEditorCanvas: React.FC = () => {
 
           {/* Form fields: Wait Node */}
           {nodeType === 'wait' && (
-            <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 space-y-3">
-              <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-600" /> BullMQ Delayed Execution Timer
-              </span>
-              <p className="text-xs text-amber-900">
-                Pushes the execution task into Redis delayed queue. When the timer expires, the worker awakens the flow.
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="Duration Value"
-                  type="number"
-                  min="1"
-                  value={nodeWaitDuration}
-                  onChange={(e) => setNodeWaitDuration(Number(e.target.value))}
-                  required
-                />
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Unit
-                  </label>
-                  <select
-                    value={nodeWaitUnit}
-                    onChange={(e) => setNodeWaitUnit(e.target.value as any)}
-                    className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white"
-                  >
-                    <option value="seconds">Seconds</option>
-                    <option value="minutes">Minutes</option>
-                    <option value="hours">Hours (e.g. 1 hour = 3600s)</option>
-                    <option value="days">Days</option>
-                  </select>
+            <div className="space-y-4">
+              <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 space-y-3">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-amber-600" /> BullMQ Delayed Execution Timer
+                </span>
+                <p className="text-xs text-amber-900">
+                  Pushes the execution task into Redis delayed queue. When the timer expires, the worker awakens the flow.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Duration Value"
+                    type="number"
+                    min="1"
+                    value={nodeWaitDuration}
+                    onChange={(e) => setNodeWaitDuration(Number(e.target.value))}
+                    required
+                  />
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Unit
+                    </label>
+                    <select
+                      value={nodeWaitUnit}
+                      onChange={(e) => setNodeWaitUnit(e.target.value as any)}
+                      className="w-full rounded-xl border border-gray-200 px-3.5 py-2 text-sm bg-white font-medium"
+                    >
+                      <option value="seconds">Seconds</option>
+                      <option value="minutes">Minutes</option>
+                      <option value="hours">Hours (e.g. 1 hour = 3600s)</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
                 </div>
+              </div>
+
+              {/* Next Step Transition Selector */}
+              <div className="p-3.5 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1 uppercase tracking-wider">
+                    <CornerDownRight className="w-3.5 h-3.5 text-amber-600" /> After Delay Route To
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded font-bold">
+                    Port: continue
+                  </span>
+                </div>
+                <select
+                  value={nodeNext}
+                  onChange={(e) => setNodeNext(e.target.value)}
+                  className="w-full rounded-xl border border-amber-200 px-3 py-2 text-xs bg-white text-gray-900 font-medium focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">-- Connect visually on Canvas or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
 
           {/* Form fields: Input */}
           {nodeType === 'input' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <Input
                 label="Prompt Question"
                 placeholder="What is your email address?"
@@ -1925,64 +2203,166 @@ const FlowEditorCanvas: React.FC = () => {
                 onChange={(e) => setNodeSaveAs(e.target.value)}
                 required
               />
+
+              {/* Next Step Transition Selector */}
+              <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-950 flex items-center gap-1 uppercase tracking-wider">
+                    <CornerDownRight className="w-3.5 h-3.5 text-blue-600" /> After Answer Received Route To
+                  </span>
+                  <span className="text-[10px] font-mono text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded font-bold">
+                    Port: continue
+                  </span>
+                </div>
+                <select
+                  value={nodeNext}
+                  onChange={(e) => setNodeNext(e.target.value)}
+                  className="w-full rounded-xl border border-blue-200 px-3 py-2 text-xs bg-white text-gray-900 font-medium focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- Connect visually on Canvas or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
           {/* Form fields: Condition */}
           {nodeType === 'condition' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <Input
                 label="Variable Name to Evaluate"
                 placeholder="e.g. userChoice"
                 value={conditionVar}
                 onChange={(e) => setConditionVar(e.target.value)}
                 required
+                helperText="Flow context variable name to inspect"
               />
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-gray-700">Branch Equality Rules</span>
+                  <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">Branch Equality Rules</span>
                   <button
                     type="button"
                     onClick={() => setConditionBranches([...conditionBranches, { equals: '', next: '' }])}
-                    className="text-xs text-primary-600 font-semibold"
+                    className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
                   >
-                    + Add Branch
+                    <Plus className="w-3.5 h-3.5" /> Add Branch
                   </button>
                 </div>
                 {conditionBranches.map((b, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <input
-                      placeholder="Equals (e.g. Yes)"
-                      value={b.equals}
-                      onChange={(e) => {
-                        const copy = [...conditionBranches];
-                        copy[idx].equals = e.target.value;
-                        setConditionBranches(copy);
-                      }}
-                      className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setConditionBranches(conditionBranches.filter((_, i) => i !== idx))}
-                      className="p-1 text-gray-400 hover:text-rose-600"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div key={idx} className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-gray-700 px-2 py-1 rounded-lg bg-white shrink-0 border border-gray-200">
+                        Port: branch_{idx}
+                      </span>
+                      <input
+                        placeholder="Value to match (e.g. Yes, 1, confirm)"
+                        value={b.equals}
+                        onChange={(e) => {
+                          const copy = [...conditionBranches];
+                          copy[idx].equals = e.target.value;
+                          setConditionBranches(copy);
+                        }}
+                        className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setConditionBranches(conditionBranches.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                        title="Remove branch"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1 border-t border-gray-200/60">
+                      <span className="text-[10px] font-semibold text-gray-700 shrink-0 flex items-center gap-1">
+                        <CornerDownRight className="w-3 h-3 text-emerald-600" /> If Matches Route To:
+                      </span>
+                      <select
+                        value={b.next || ''}
+                        onChange={(e) => {
+                          const copy = [...conditionBranches];
+                          copy[idx].next = e.target.value;
+                          setConditionBranches(copy);
+                        }}
+                        className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white text-gray-800 font-medium focus:outline-none"
+                      >
+                        <option value="">-- Connect on Canvas (Port branch_{idx}) --</option>
+                        {availableTargetNodes.map((target) => (
+                          <option key={target.id} value={target.id}>
+                            👉 Step: {target.id} ({target.type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Default / Else Fallback */}
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                    <CornerDownRight className="w-3.5 h-3.5 text-gray-500" /> Default (Else / No Match)
+                  </span>
+                  <span className="text-[10px] font-mono text-gray-600 bg-gray-200/70 px-2 py-0.5 rounded font-bold">
+                    Port: default
+                  </span>
+                </div>
+                <select
+                  value={conditionDefault}
+                  onChange={(e) => setConditionDefault(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white text-gray-800 font-medium focus:outline-none"
+                >
+                  <option value="">-- Connect on Canvas (Port default) or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
 
           {/* Form fields: Action */}
           {nodeType === 'action' && (
-            <Input
-              label="Webhook URL"
-              placeholder="https://api.example.com/webhook"
-              value={nodeUrl}
-              onChange={(e) => setNodeUrl(e.target.value)}
-              required
-            />
+            <div className="space-y-4">
+              <Input
+                label="Webhook URL"
+                placeholder="https://api.example.com/webhook"
+                value={nodeUrl}
+                onChange={(e) => setNodeUrl(e.target.value)}
+                required
+              />
+
+              {/* Next Step Transition Selector */}
+              <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-950 flex items-center gap-1 uppercase tracking-wider">
+                    <CornerDownRight className="w-3.5 h-3.5 text-blue-600" /> On Webhook Success Route To
+                  </span>
+                  <span className="text-[10px] font-mono text-blue-800 bg-blue-100/70 px-2 py-0.5 rounded font-bold">
+                    Port: continue
+                  </span>
+                </div>
+                <select
+                  value={nodeNext}
+                  onChange={(e) => setNodeNext(e.target.value)}
+                  className="w-full rounded-xl border border-blue-200 px-3 py-2 text-xs bg-white text-gray-900 font-medium focus:outline-none focus:border-blue-500"
+                >
+                  <option value="">-- Connect visually on Canvas or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           )}
 
           {/* Form fields: AI Agent (RAG Knowledge Base) */}
@@ -2057,6 +2437,30 @@ const FlowEditorCanvas: React.FC = () => {
                 </p>
               </div>
 
+              {/* Next Step Transition Selector */}
+              <div className="p-3.5 bg-violet-50/60 rounded-2xl border border-violet-200/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-violet-950 flex items-center gap-1 uppercase tracking-wider">
+                    <CornerDownRight className="w-3.5 h-3.5 text-violet-600" /> On Answer Generated Route To
+                  </span>
+                  <span className="text-[10px] font-mono text-violet-800 bg-violet-100/70 px-2 py-0.5 rounded font-bold">
+                    Port: continue
+                  </span>
+                </div>
+                <select
+                  value={nodeNext}
+                  onChange={(e) => setNodeNext(e.target.value)}
+                  className="w-full rounded-xl border border-violet-200 px-3 py-2 text-xs bg-white text-gray-900 font-medium focus:outline-none focus:border-violet-500"
+                >
+                  <option value="">-- Connect visually on Canvas or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="p-3 bg-gray-50 rounded-xl border border-gray-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
@@ -2122,10 +2526,10 @@ const FlowEditorCanvas: React.FC = () => {
                 helperText="Variable containing customer message to classify"
               />
 
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-gray-700">
-                    Intent Branches
+                  <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    Intent Branches & Destinations
                   </label>
                   <Button
                     variant="outline"
@@ -2138,31 +2542,55 @@ const FlowEditorCanvas: React.FC = () => {
                   </Button>
                 </div>
 
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className="space-y-2.5 max-h-60 overflow-y-auto">
                   {intentBranches.map((branch, idx) => (
-                    <div key={idx} className="flex items-center gap-2 p-2 rounded-xl bg-gray-50 border border-gray-200">
-                      <span className="text-[11px] font-bold text-fuchsia-800 w-6 text-center">
-                        #{idx + 1}
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="e.g. sales, support, pricing, billing, speak_to_human"
-                        value={branch.intent}
-                        onChange={(e) => {
-                          const copy = [...intentBranches];
-                          copy[idx].intent = e.target.value;
-                          setIntentBranches(copy);
-                        }}
-                        className="flex-1 rounded-xl border border-gray-200 px-3 py-1.5 text-xs bg-white focus:outline-hidden focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-600"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setIntentBranches(intentBranches.filter((_, i) => i !== idx))}
-                        className="p-1 text-gray-400 hover:text-rose-600 transition-colors"
-                        title="Remove Intent"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <div key={idx} className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono font-bold text-fuchsia-800 px-2 py-1 rounded-lg bg-white shrink-0 border border-gray-200">
+                          Port: intent_{idx}
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="e.g. sales, support, pricing, billing, speak_to_human"
+                          value={branch.intent}
+                          onChange={(e) => {
+                            const copy = [...intentBranches];
+                            copy[idx].intent = e.target.value;
+                            setIntentBranches(copy);
+                          }}
+                          className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white focus:outline-hidden focus:ring-2 focus:ring-fuchsia-500/20 focus:border-fuchsia-600 font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIntentBranches(intentBranches.filter((_, i) => i !== idx))}
+                          className="p-1 text-gray-400 hover:text-rose-600 transition-colors"
+                          title="Remove Intent"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1 border-t border-gray-200/60">
+                        <span className="text-[10px] font-semibold text-gray-700 shrink-0 flex items-center gap-1">
+                          <CornerDownRight className="w-3 h-3 text-fuchsia-600" /> On Match Route To:
+                        </span>
+                        <select
+                          value={branch.next || ''}
+                          onChange={(e) => {
+                            const copy = [...intentBranches];
+                            copy[idx].next = e.target.value;
+                            setIntentBranches(copy);
+                          }}
+                          className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white text-gray-800 font-medium focus:outline-none"
+                        >
+                          <option value="">-- Connect on Canvas (Port intent_{idx}) --</option>
+                          {availableTargetNodes.map((target) => (
+                            <option key={target.id} value={target.id}>
+                              👉 Step: {target.id} ({target.type})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   ))}
                   {intentBranches.length === 0 && (
@@ -2171,6 +2599,30 @@ const FlowEditorCanvas: React.FC = () => {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Default / Unmatched Fallback */}
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                    <CornerDownRight className="w-3.5 h-3.5 text-gray-500" /> Default (No Intent Matched)
+                  </span>
+                  <span className="text-[10px] font-mono text-gray-600 bg-gray-200/70 px-2 py-0.5 rounded font-bold">
+                    Port: default
+                  </span>
+                </div>
+                <select
+                  value={intentDefault}
+                  onChange={(e) => setIntentDefault(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white text-gray-800 font-medium focus:outline-none"
+                >
+                  <option value="">-- Connect on Canvas (Port default) or select target step --</option>
+                  {availableTargetNodes.map((target) => (
+                    <option key={target.id} value={target.id}>
+                      👉 Step: {target.id} ({target.type})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-gray-100">
