@@ -40,6 +40,40 @@ import { formatDateTime, cn } from '../lib/utils';
 
 const PRESET_TAG_SUGGESTIONS = ['followup', 'up', 'mp', 'vip', 'lead', 'customer', 'hot', 'new'];
 
+export const COUNTRY_CODES = [
+  { code: '91', country: 'India (+91)', flag: '🇮🇳' },
+  { code: '1', country: 'United States / Canada (+1)', flag: '🇺🇸' },
+  { code: '44', country: 'United Kingdom (+44)', flag: '🇬🇧' },
+  { code: '971', country: 'United Arab Emirates (+971)', flag: '🇦🇪' },
+  { code: '966', country: 'Saudi Arabia (+966)', flag: '🇸🇦' },
+  { code: '65', country: 'Singapore (+65)', flag: '🇸🇬' },
+  { code: '60', country: 'Malaysia (+60)', flag: '🇲🇾' },
+  { code: '61', country: 'Australia (+61)', flag: '🇦🇺' },
+  { code: '64', country: 'New Zealand (+64)', flag: '🇳🇿' },
+  { code: '49', country: 'Germany (+49)', flag: '🇩🇪' },
+  { code: '33', country: 'France (+33)', flag: '🇫🇷' },
+  { code: '39', country: 'Italy (+39)', flag: '🇮🇹' },
+  { code: '34', country: 'Spain (+34)', flag: '🇪🇸' },
+  { code: '55', country: 'Brazil (+55)', flag: '🇧🇷' },
+  { code: '52', country: 'Mexico (+52)', flag: '🇲🇽' },
+  { code: '27', country: 'South Africa (+27)', flag: '🇿🇦' },
+  { code: '234', country: 'Nigeria (+234)', flag: '🇳🇬' },
+  { code: '254', country: 'Kenya (+254)', flag: '🇰🇪' },
+  { code: '880', country: 'Bangladesh (+880)', flag: '🇧🇩' },
+  { code: '92', country: 'Pakistan (+92)', flag: '🇵🇰' },
+  { code: '94', country: 'Sri Lanka (+94)', flag: '🇱🇰' },
+  { code: '977', country: 'Nepal (+977)', flag: '🇳🇵' },
+  { code: '62', country: 'Indonesia (+62)', flag: '🇮🇩' },
+  { code: '63', country: 'Philippines (+63)', flag: '🇵🇭' },
+  { code: '84', country: 'Vietnam (+84)', flag: '🇻🇳' },
+  { code: '66', country: 'Thailand (+66)', flag: '🇹🇭' },
+  { code: '20', country: 'Egypt (+20)', flag: '🇪🇬' },
+  { code: '974', country: 'Qatar (+974)', flag: '🇶🇦' },
+  { code: '968', country: 'Oman (+968)', flag: '🇴🇲' },
+  { code: '965', country: 'Kuwait (+965)', flag: '🇰🇼' },
+  { code: '973', country: 'Bahrain (+973)', flag: '🇧🇭' },
+];
+
 interface CustomFieldItem {
   header: string;
   attributeKey: string;
@@ -59,6 +93,7 @@ export const ContactsPage: React.FC = () => {
 
   // Add Contact Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newContactCountryCode, setNewContactCountryCode] = useState('91');
   const [newContactName, setNewContactName] = useState('');
   const [newContactExternalId, setNewContactExternalId] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
@@ -69,6 +104,7 @@ export const ContactsPage: React.FC = () => {
 
   // Import Modal & Column Mapping
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importCountryCode, setImportCountryCode] = useState('91');
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importChannelId, setImportChannelId] = useState('');
   const [importTags, setImportTags] = useState<string[]>(['followup']);
@@ -140,6 +176,8 @@ export const ContactsPage: React.FC = () => {
         channelId: newContactChannelId || undefined,
         email: newContactEmail.trim() || undefined,
         tags: newContactTags,
+        countryCode: newContactCountryCode,
+        defaultCountryCode: newContactCountryCode,
       });
 
       setContacts((prev) => [contact, ...prev]);
@@ -237,6 +275,8 @@ export const ContactsPage: React.FC = () => {
     formData.append('file', importFile);
     if (importChannelId) formData.append('channelId', importChannelId);
     if (importTags.length > 0) formData.append('tags', importTags.join(','));
+    formData.append('countryCode', importCountryCode);
+    formData.append('defaultCountryCode', importCountryCode);
     formData.append('mapping', JSON.stringify(mapping));
 
     try {
@@ -1105,8 +1145,8 @@ export const ContactsPage: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 4: Target Channel & Default Tags */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+          {/* STEP 4: Target Channel, Country Code & Sample Template */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-gray-100">
             {/* Channel Selection */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -1126,8 +1166,29 @@ export const ContactsPage: React.FC = () => {
               </select>
             </div>
 
+            {/* Country Calling Code Selector */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                Default Country Code
+              </label>
+              <select
+                value={importCountryCode}
+                onChange={(e) => setImportCountryCode(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white font-medium text-gray-800"
+              >
+                {COUNTRY_CODES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} {c.country}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-gray-500">
+                Prefixes 10-digit numbers with +{importCountryCode} to prevent WhatsApp reply duplicates.
+              </p>
+            </div>
+
             {/* Template Download */}
-            <div className="space-y-1.5 flex flex-col justify-end">
+            <div className="space-y-1.5 flex flex-col justify-start">
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
                 Sample Template
               </label>
@@ -1137,9 +1198,9 @@ export const ContactsPage: React.FC = () => {
                 size="sm"
                 onClick={handleDownloadSampleCsv}
                 icon={<Download className="w-4 h-4 text-gray-600" />}
-                className="w-full justify-center"
+                className="w-full justify-center text-xs py-2"
               >
-                Download Sample CSV with Custom Columns
+                Download CSV Sample
               </Button>
             </div>
           </div>
@@ -1262,14 +1323,48 @@ export const ContactsPage: React.FC = () => {
             onChange={(e) => setNewContactName(e.target.value)}
           />
 
-          <Input
-            label="Phone Number / External ID"
-            placeholder="e.g. +14155552671"
-            value={newContactExternalId}
-            onChange={(e) => setNewContactExternalId(e.target.value)}
-            helperText="WhatsApp mobile number with country code"
-            required
-          />
+          {/* Phone Number with Country Code */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+              Phone Number / WhatsApp ID <span className="text-rose-500">*</span>
+            </label>
+            <div className="flex gap-2">
+              <div className="w-36 shrink-0">
+                <select
+                  value={newContactCountryCode}
+                  onChange={(e) => setNewContactCountryCode(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-2 py-2 text-xs bg-white font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {COUNTRY_CODES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} +{c.code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="e.g. 9876543210 or full number"
+                  value={newContactExternalId}
+                  onChange={(e) => setNewContactExternalId(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  required
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Auto-formats to WhatsApp E.164 (e.g.{' '}
+              <span className="font-mono font-semibold text-primary-700">
+                {newContactExternalId.trim().startsWith('+') ||
+                (newContactExternalId.replace(/[^\d]/g, '').length > 10 && !newContactExternalId.startsWith('0'))
+                  ? newContactExternalId.replace(/[^\d]/g, '') || '919876543210'
+                  : `${newContactCountryCode}${newContactExternalId.replace(/[^\d]/g, '').replace(/^0+/, '')}` ||
+                    '919876543210'}
+              </span>
+              ) to prevent duplicate contacts when customer replies.
+            </p>
+          </div>
 
           <Input
             label="Email Address (Optional)"

@@ -140,10 +140,19 @@ export const contactsApi = {
   getCount: (options: { channelId?: string; tags?: string; search?: string } = {}) =>
     apiClient.get<{ count: number }>('/contacts/count', options),
 
-  create: (data: { name?: string; externalId: string; channel?: string; channelId?: string; email?: string; tags?: string[] }) =>
-    apiClient.post<Contact>('/contacts', data),
+  create: (data: {
+    name?: string;
+    externalId: string;
+    channel?: string;
+    channelId?: string;
+    email?: string;
+    tags?: string[];
+    attributes?: Record<string, any>;
+    countryCode?: string;
+    defaultCountryCode?: string;
+  }) => apiClient.post<Contact>('/contacts', data),
 
-  update: (id: string, data: { name?: string; email?: string; tags?: string[] }) =>
+  update: (id: string, data: { name?: string; email?: string; tags?: string[]; attributes?: Record<string, any> }) =>
     apiClient.patch<Contact>(`/contacts/${id}`, data),
 
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/contacts/${id}`),
@@ -165,8 +174,13 @@ export const contactsApi = {
   importFile: (formData: FormData) =>
     apiClient.post<ImportContactsResult>('/contacts/import', formData),
 
-  bulkCreate: (data: { channelId?: string; contacts: any[]; tags?: string[] }) =>
-    apiClient.post<ImportContactsResult>('/contacts/bulk', data),
+  bulkCreate: (data: {
+    channelId?: string;
+    contacts: any[];
+    tags?: string[];
+    countryCode?: string;
+    defaultCountryCode?: string;
+  }) => apiClient.post<ImportContactsResult>('/contacts/bulk', data),
 };
 
 // ==================== CONVERSATIONS API ====================
