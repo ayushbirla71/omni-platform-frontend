@@ -373,7 +373,8 @@ export const ContactsPage: React.FC = () => {
   const handleAddTagToSelectedContact = async (tagToAdd: string) => {
     if (!selectedContact || !tagToAdd.trim()) return;
     const cleanTag = tagToAdd.trim().toLowerCase();
-    const currentTags = selectedContact.attributes?.tags || [];
+    const rawTags = selectedContact.attributes?.tags || (selectedContact as any).tags || [];
+    const currentTags = Array.isArray(rawTags) ? rawTags : [];
     if (currentTags.includes(cleanTag)) return;
 
     const newTags = [...currentTags, cleanTag];
@@ -393,7 +394,8 @@ export const ContactsPage: React.FC = () => {
 
   const handleRemoveTagFromSelectedContact = async (tagToRemove: string) => {
     if (!selectedContact) return;
-    const currentTags = selectedContact.attributes?.tags || [];
+    const rawTags = selectedContact.attributes?.tags || (selectedContact as any).tags || [];
+    const currentTags = Array.isArray(rawTags) ? rawTags : [];
     const newTags = currentTags.filter((t) => t !== tagToRemove);
 
     try {
@@ -456,7 +458,8 @@ export const ContactsPage: React.FC = () => {
 
   // Filter contacts
   const filteredContacts = contacts.filter((c) => {
-    const contactTags = c.attributes?.tags || [];
+    const rawTags = c.attributes?.tags || (c as any).tags || [];
+    const contactTags = Array.isArray(rawTags) ? rawTags : [];
     const contactEmail = c.attributes?.email || c.email || '';
     const contactExtId = c.externalId || c.external_id || '';
     const contactName = c.name || '';
@@ -466,13 +469,13 @@ export const ContactsPage: React.FC = () => {
       contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       contactExtId.includes(searchQuery) ||
       contactEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contactTags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      contactTags.some((t) => String(t).toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesChannel = channelFilter === 'all' || contactChannelId === channelFilter || c.channel === channelFilter;
 
     const matchesTag =
       selectedTagFilter === 'all' ||
-      contactTags.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase());
+      contactTags.some((t) => String(t).toLowerCase() === selectedTagFilter.toLowerCase());
 
     return matchesSearch && matchesChannel && matchesTag;
   });
@@ -712,7 +715,8 @@ export const ContactsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
                 {filteredContacts.map((contact) => {
-                  const tags = contact.attributes?.tags || [];
+                  const rawTags = contact.attributes?.tags || (contact as any).tags || [];
+                  const tags: string[] = Array.isArray(rawTags) ? rawTags : [];
                   const email = contact.attributes?.email || contact.email;
                   const externalId = contact.externalId || contact.external_id || 'N/A';
 

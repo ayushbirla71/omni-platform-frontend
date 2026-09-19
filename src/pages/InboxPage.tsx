@@ -933,15 +933,20 @@ export const InboxPage: React.FC = () => {
                     ✉️ {contact.attributes.email}
                   </div>
                 )}
-                {contact?.attributes?.tags && contact.attributes.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {contact.attributes.tags.map((t: string) => (
-                      <Badge key={t} variant="secondary" size="sm">
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const rawTags = contact?.attributes?.tags || (contact as any)?.tags || [];
+                  const contactTags: string[] = Array.isArray(rawTags) ? rawTags : [];
+                  if (contactTags.length === 0) return null;
+                  return (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {contactTags.map((t: string) => (
+                        <Badge key={t} variant="secondary" size="sm">
+                          {t}
+                        </Badge>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

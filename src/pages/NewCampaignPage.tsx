@@ -202,7 +202,8 @@ export const NewCampaignPage: React.FC = () => {
         return channelMatch;
       }
 
-      const contactTags = (c.attributes?.tags || []).map((t) => t.toLowerCase());
+      const rawTags = c.attributes?.tags || (c as any).tags || [];
+      const contactTags = Array.isArray(rawTags) ? rawTags.map((t: string) => String(t).toLowerCase()) : [];
       const hasAnyTag = selectedTags.some((t) => contactTags.includes(t.toLowerCase()));
       return channelMatch && hasAnyTag;
     });
@@ -1109,7 +1110,8 @@ export const NewCampaignPage: React.FC = () => {
                 ) : (
                   contacts.map((contact) => {
                     const isSelected = selectedContactIds.has(contact.id);
-                    const tags = contact.attributes?.tags || [];
+                    const rawTags = contact.attributes?.tags || (contact as any).tags || [];
+                    const tags: string[] = Array.isArray(rawTags) ? rawTags : [];
                     const externalId = contact.externalId || contact.external_id || '';
 
                     return (
