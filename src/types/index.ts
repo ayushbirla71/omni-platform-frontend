@@ -197,6 +197,27 @@ export interface Contact {
   updatedAt?: string;
 }
 
+export interface ColumnMapping {
+  nameColumn?: string;
+  phoneColumn?: string;
+  emailColumn?: string;
+  tagsColumn?: string;
+  customFields?: Record<string, string>;
+}
+
+export interface SpreadsheetPreview {
+  headers: string[];
+  previewRows: Record<string, any>[];
+  totalRows: number;
+  suggestedMapping: {
+    nameColumn: string | null;
+    phoneColumn: string | null;
+    emailColumn: string | null;
+    tagsColumn: string | null;
+    customFields: Record<string, string>;
+  };
+}
+
 export interface ImportContactsResult {
   success: boolean;
   total: number;

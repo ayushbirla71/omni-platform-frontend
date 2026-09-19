@@ -57,7 +57,7 @@ import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { formatDateTime, formatRelativeTime, cn } from '../lib/utils';
 import { WhatsAppTemplateCard } from '../components/chat/WhatsAppTemplateCard';
-import { APPROVED_TEMPLATES_CATALOG, registerDynamicTemplates } from '../utils/whatsapp-templates';
+import { registerDynamicTemplates } from '../utils/whatsapp-templates';
 import { TemplateMediaUploader, TemplateMediaValue } from '../components/common/TemplateMediaUploader';
 
 export const InboxPage: React.FC = () => {
@@ -155,7 +155,7 @@ export const InboxPage: React.FC = () => {
 
   // WhatsApp Quick Template Modal State
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>(APPROVED_TEMPLATES_CATALOG);
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
@@ -664,20 +664,17 @@ export const InboxPage: React.FC = () => {
           registerDynamicTemplates(listToShow);
           handleSelectTemplate(listToShow[0]);
         } else {
-          setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
-          registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
-          handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+          setChannelTemplates([]);
+          setSelectedTemplate(null);
         }
       } else {
-        setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
-        registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
-        handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+        setChannelTemplates([]);
+        setSelectedTemplate(null);
       }
     } catch (err) {
-      console.warn('Using catalog fallback templates:', err);
-      setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
-      registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
-      handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+      console.warn('[InboxPage] Failed to fetch channel templates:', err);
+      setChannelTemplates([]);
+      setSelectedTemplate(null);
     } finally {
       setIsLoadingTemplates(false);
     }
@@ -688,10 +685,8 @@ export const InboxPage: React.FC = () => {
     const newParams: Record<string, string> = {};
 
     const headerComp = tpl.components?.find((c) => c.type === 'HEADER');
-    let defaultHeaderValue = '';
-    if (headerComp?.example?.header_handle?.[0]) {
-      defaultHeaderValue = headerComp.example.header_handle[0];
-    }
+    const defaultHeaderValue =
+      headerComp?.format === 'TEXT' && headerComp?.text ? headerComp.text : '';
 
     tpl.components?.forEach((comp) => {
       if (comp.type === 'BODY' && comp.text) {
@@ -720,11 +715,21 @@ export const InboxPage: React.FC = () => {
   const handleSendTemplate = async () => {
     if (!selectedConvId || !selectedTemplate) return;
 
-    setIsSendingTemplate(true);
-
     const headerComp = selectedTemplate.components?.find((c) => c.type === 'HEADER');
     const headerType = headerComp?.format as any;
-    const finalHeaderValue = templateMedia.headerValue?.trim() || headerComp?.example?.header_handle?.[0] || undefined;
+    const finalHeaderValue = templateMedia.headerValue?.trim() || undefined;
+
+    if (headerType && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerType)) {
+      if (!finalHeaderValue && !templateMedia.mediaStorageKey) {
+        showToast(
+          `Please upload a ${headerType.toLowerCase()} file or provide a media URL for this template.`,
+          'error'
+        );
+        return;
+      }
+    }
+
+    setIsSendingTemplate(true);
 
     try {
       const sentMsg = await conversationsApi.sendTemplate(selectedConvId, {
@@ -2412,8 +2417,8 @@ export const InboxPage: React.FC = () => {
                             templateName: selectedTemplate.name,
                             templateParams,
                             headerType: selectedTemplate.components?.find((c) => c.type === 'HEADER')?.format as any,
-                            headerValue: templateMedia.headerValue?.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
-                            mediaUrl: templateMedia.headerValue?.trim() || selectedTemplate.components?.find((c) => c.type === 'HEADER')?.example?.header_handle?.[0],
+                            headerValue: templateMedia.headerValue?.trim() || undefined,
+                            mediaUrl: templateMedia.headerValue?.trim() || undefined,
                             bodyText: selectedTemplate.components?.find((c) => c.type === 'BODY')?.text,
                             footerText: selectedTemplate.components?.find((c) => c.type === 'FOOTER')?.text,
                             buttons: (selectedTemplate.components?.find((c) => c.type === 'BUTTONS') as any)?.buttons,

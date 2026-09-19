@@ -44,7 +44,7 @@ import {
   Split,
   ShieldAlert,
 } from 'lucide-react';
-import { flowsApi, channelsApi, knowledgeBasesApi } from '../api';
+import { flowsApi, channelsApi, knowledgeBasesApi, contactsApi } from '../api';
 import type {
   Flow,
   FlowDefinition,
@@ -100,6 +100,9 @@ const FlowEditorCanvas: React.FC = () => {
   // Available Knowledge Bases
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [isLoadingKBs, setIsLoadingKBs] = useState(false);
+
+  // Available Custom Attribute Keys (from contact imports e.g. company, price, product)
+  const [customAttrKeys, setCustomAttrKeys] = useState<string[]>([]);
 
   // React Flow State
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
@@ -468,6 +471,16 @@ const FlowEditorCanvas: React.FC = () => {
     }
   }, []);
 
+  // Fetch Tenant Custom Contact Attribute Keys (e.g. company, price, product from Excel imports)
+  const loadCustomAttributes = useCallback(async () => {
+    try {
+      const keys = await contactsApi.getAttributeKeys();
+      setCustomAttrKeys(Array.isArray(keys) ? keys : []);
+    } catch {
+      // Non-fatal
+    }
+  }, []);
+
   // Open Edit Node Modal
   const handleOpenEdit = useCallback((targetNode: FlowNode) => {
     setIsNewNode(false);
@@ -573,7 +586,7 @@ const FlowEditorCanvas: React.FC = () => {
       const defaultHeaderVal =
         format === 'TEXT' && headerComp.text
           ? headerComp.text
-          : headerComp.example?.header_handle?.[0] || '';
+          : '';
       setTemplateHeaderValue(defaultHeaderVal);
       setTemplateMedia({
         headerValue: defaultHeaderVal,
@@ -674,7 +687,7 @@ const FlowEditorCanvas: React.FC = () => {
       setEdges(generatedEdges);
       setEntryNodeId(entryId);
 
-      await Promise.all([loadAvailableTemplates(), loadAvailableKnowledgeBases()]);
+      await Promise.all([loadAvailableTemplates(), loadAvailableKnowledgeBases(), loadCustomAttributes()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load flow', 'error');
       navigate('/flows');
@@ -1396,7 +1409,7 @@ const FlowEditorCanvas: React.FC = () => {
                         Body Parameters Mapping
                       </span>
                       <p className="text-[11px] text-gray-500">
-                        Map Meta template placeholders ({'{{1}}'}, {'{{2}}'}) to static values or flow variables.
+                        Map Meta template placeholders ({'{{1}}'}, {'{{2}}'}) to contact attributes, custom Excel columns, or flow variables.
                       </p>
                     </div>
                     <button
@@ -1418,76 +1431,236 @@ const FlowEditorCanvas: React.FC = () => {
                       No dynamic parameters in this template body. Click "Add Param" if required.
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       {templateParams.map((p, idx) => (
-                        <div key={idx} className="flex items-center gap-2 bg-white p-2 rounded-xl border border-gray-100 shadow-2xs">
-                          <div className="w-28 shrink-0">
-                            <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Placeholder</span>
-                            <div className="relative">
-                              <span className="absolute left-2 top-1.5 text-xs text-gray-400 font-mono">{'{{'}</span>
-                              <input
-                                placeholder="1"
-                                value={p.key}
-                                onChange={(e) => {
-                                  const copy = [...templateParams];
-                                  copy[idx].key = e.target.value;
-                                  setTemplateParams(copy);
-                                }}
-                                className="w-full rounded-lg border border-gray-200 pl-6 pr-6 py-1 text-xs font-mono font-bold text-emerald-800 bg-emerald-50/40"
-                              />
-                              <span className="absolute right-2 top-1.5 text-xs text-gray-400 font-mono">{'}}'}</span>
+                        <div key={idx} className="bg-white p-2.5 rounded-xl border border-gray-200/90 shadow-2xs">
+                          <div className="flex items-center gap-2">
+                            <div className="w-28 shrink-0">
+                              <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Placeholder</span>
+                              <div className="relative">
+                                <span className="absolute left-2 top-1.5 text-xs text-gray-400 font-mono">{'{{'}</span>
+                                <input
+                                  placeholder="1"
+                                  value={p.key}
+                                  onChange={(e) => {
+                                    const copy = [...templateParams];
+                                    copy[idx].key = e.target.value;
+                                    setTemplateParams(copy);
+                                  }}
+                                  className="w-full rounded-lg border border-gray-200 pl-6 pr-6 py-1.5 text-xs font-mono font-bold text-emerald-800 bg-emerald-50/50"
+                                />
+                                <span className="absolute right-2 top-1.5 text-xs text-gray-400 font-mono">{'}}'}</span>
+                              </div>
                             </div>
+                            <div className="flex-1">
+                              <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Mapped Attribute / Value</span>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  placeholder="e.g. {{contact.name}} or static text"
+                                  value={p.value}
+                                  onChange={(e) => {
+                                    const copy = [...templateParams];
+                                    copy[idx].value = e.target.value;
+                                    setTemplateParams(copy);
+                                  }}
+                                  className="flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:border-primary-500 font-mono"
+                                />
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    const copy = [...templateParams];
+                                    copy[idx].value = e.target.value;
+                                    setTemplateParams(copy);
+                                  }}
+                                  className="rounded-lg border border-primary-200 bg-primary-50/70 hover:bg-primary-100 text-primary-800 text-xs py-1.5 px-2 font-medium cursor-pointer transition-colors max-w-[170px]"
+                                  title="Pick variable from contacts, custom attributes or flow state"
+                                >
+                                  <option value="">⚡ Select Variable...</option>
+                                  <optgroup label="👤 Contact Core">
+                                    <option value="{{contact.name}}">Name (&#123;&#123;contact.name&#125;&#125;)</option>
+                                    <option value="{{contact.phone}}">Phone (&#123;&#123;contact.phone&#125;&#125;)</option>
+                                    <option value="{{contact.email}}">Email (&#123;&#123;contact.email&#125;&#125;)</option>
+                                    <option value="{{contact.id}}">Contact ID (&#123;&#123;contact.id&#125;&#125;)</option>
+                                  </optgroup>
+                                  <optgroup label="📊 Custom Attributes (Excel/CSV)">
+                                    {customAttrKeys.length > 0 ? (
+                                      customAttrKeys.map((k) => (
+                                        <option key={k} value={`{{contact.attributes.${k}}}`}>
+                                          {k.toUpperCase()} (&#123;&#123;contact.attributes.{k}&#125;&#125;)
+                                        </option>
+                                      ))
+                                    ) : (
+                                      <>
+                                        <option value="{{contact.attributes.company}}">Company (&#123;&#123;contact.attributes.company&#125;&#125;)</option>
+                                        <option value="{{contact.attributes.product}}">Product (&#123;&#123;contact.attributes.product&#125;&#125;)</option>
+                                        <option value="{{contact.attributes.price}}">Price (&#123;&#123;contact.attributes.price&#125;&#125;)</option>
+                                        <option value="{{contact.attributes.order_id}}">Order ID (&#123;&#123;contact.attributes.order_id&#125;&#125;)</option>
+                                      </>
+                                    )}
+                                  </optgroup>
+                                  <optgroup label="🤖 AI & Flow Runtime">
+                                    <option value="{{last_message}}">Last Message (&#123;&#123;last_message&#125;&#125;)</option>
+                                    <option value="{{ai_response}}">AI Response (&#123;&#123;ai_response&#125;&#125;)</option>
+                                    <option value="{{detected_intent}}">Detected Intent (&#123;&#123;detected_intent&#125;&#125;)</option>
+                                    <option value="{{detected_sentiment}}">Detected Sentiment (&#123;&#123;detected_sentiment&#125;&#125;)</option>
+                                  </optgroup>
+                                  <optgroup label="💼 CRM Deals">
+                                    <option value="{{deal.title}}">Deal Title (&#123;&#123;deal.title&#125;&#125;)</option>
+                                    <option value="{{deal.value}}">Deal Value (&#123;&#123;deal.value&#125;&#125;)</option>
+                                    <option value="{{deal.stage}}">Deal Stage (&#123;&#123;deal.stage&#125;&#125;)</option>
+                                  </optgroup>
+                                </select>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTemplateParams(templateParams.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors mt-3"
+                              title="Remove parameter"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="flex-1">
-                            <span className="text-[10px] font-bold text-gray-500 block mb-0.5">Value / Flow Variable</span>
-                            <input
-                              placeholder="e.g. {{contact.name}} or 49.99"
-                              value={p.value}
-                              onChange={(e) => {
-                                const copy = [...templateParams];
-                                copy[idx].value = e.target.value;
-                                setTemplateParams(copy);
-                              }}
-                              className="w-full rounded-lg border border-gray-200 px-2.5 py-1 text-xs bg-white focus:outline-none focus:border-primary-500"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setTemplateParams(templateParams.filter((_, i) => i !== idx))}
-                            className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors mt-3"
-                            title="Remove parameter"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       ))}
 
                       {/* Quick Variable Inserts */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[10px] text-gray-400 font-medium">Quick Insert:</span>
-                        {['{{contact.name}}', '{{contact.email}}', '{{deal.title}}', '{{deal.value}}'].map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => {
-                              const emptyIdx = templateParams.findIndex((p) => !p.value);
-                              if (emptyIdx !== -1) {
-                                const copy = [...templateParams];
-                                copy[emptyIdx].value = v;
-                                setTemplateParams(copy);
-                              } else {
-                                setTemplateParams([
-                                  ...templateParams,
-                                  { key: String(templateParams.length + 1), value: v },
-                                ]);
-                              }
-                            }}
-                            className="text-[10px] font-mono bg-gray-100 hover:bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded transition-colors"
-                          >
-                            {v}
-                          </button>
-                        ))}
+                      <div className="p-2.5 bg-white rounded-xl border border-gray-200/70 space-y-2">
+                        <div className="flex items-center justify-between text-[11px] text-gray-500 font-medium">
+                          <span>Quick Insert Pills:</span>
+                          <span className="text-[10px] text-gray-400">Click to fill next empty parameter</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {/* Core Contact */}
+                          {['{{contact.name}}', '{{contact.phone}}', '{{contact.email}}'].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => {
+                                const emptyIdx = templateParams.findIndex((p) => !p.value);
+                                if (emptyIdx !== -1) {
+                                  const copy = [...templateParams];
+                                  copy[emptyIdx].value = v;
+                                  setTemplateParams(copy);
+                                } else {
+                                  setTemplateParams([
+                                    ...templateParams,
+                                    { key: String(templateParams.length + 1), value: v },
+                                  ]);
+                                }
+                              }}
+                              className="text-[10px] font-mono bg-blue-50 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200 transition-colors"
+                            >
+                              {v}
+                            </button>
+                          ))}
+
+                          {/* Custom Attributes from Excel */}
+                          {customAttrKeys.length > 0
+                            ? customAttrKeys.slice(0, 5).map((k) => {
+                                const val = `{{contact.attributes.${k}}}`;
+                                return (
+                                  <button
+                                    key={k}
+                                    type="button"
+                                    onClick={() => {
+                                      const emptyIdx = templateParams.findIndex((p) => !p.value);
+                                      if (emptyIdx !== -1) {
+                                        const copy = [...templateParams];
+                                        copy[emptyIdx].value = val;
+                                        setTemplateParams(copy);
+                                      } else {
+                                        setTemplateParams([
+                                          ...templateParams,
+                                          { key: String(templateParams.length + 1), value: val },
+                                        ]);
+                                      }
+                                    }}
+                                    className="text-[10px] font-mono bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200 transition-colors"
+                                  >
+                                    {val}
+                                  </button>
+                                );
+                              })
+                            : ['{{contact.attributes.company}}', '{{contact.attributes.price}}', '{{contact.attributes.product}}'].map((v) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  onClick={() => {
+                                    const emptyIdx = templateParams.findIndex((p) => !p.value);
+                                    if (emptyIdx !== -1) {
+                                      const copy = [...templateParams];
+                                      copy[emptyIdx].value = v;
+                                      setTemplateParams(copy);
+                                    } else {
+                                      setTemplateParams([
+                                        ...templateParams,
+                                        { key: String(templateParams.length + 1), value: v },
+                                      ]);
+                                    }
+                                  }}
+                                  className="text-[10px] font-mono bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200 transition-colors"
+                                >
+                                  {v}
+                                </button>
+                              ))}
+
+                          {/* Flow / CRM */}
+                          {['{{last_message}}', '{{ai_response}}', '{{deal.title}}', '{{deal.value}}'].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => {
+                                const emptyIdx = templateParams.findIndex((p) => !p.value);
+                                if (emptyIdx !== -1) {
+                                  const copy = [...templateParams];
+                                  copy[emptyIdx].value = v;
+                                  setTemplateParams(copy);
+                                } else {
+                                  setTemplateParams([
+                                    ...templateParams,
+                                    { key: String(templateParams.length + 1), value: v },
+                                  ]);
+                                }
+                              }}
+                              className="text-[10px] font-mono bg-purple-50 hover:bg-purple-100 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200 transition-colors"
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
                       </div>
+
+                      {/* Live Template Message Preview */}
+                      {selectedMetaTemplate && (() => {
+                        const bodyComp = selectedMetaTemplate.components?.find((c) => c.type === 'BODY');
+                        const bodyText = bodyComp?.text;
+                        if (!bodyText) return null;
+
+                        let previewText = bodyText;
+                        templateParams.forEach((p) => {
+                          const placeholder = `{{${p.key}}}`;
+                          const replacement = p.value ? p.value : `[Missing {{${p.key}}}]`;
+                          previewText = previewText.split(placeholder).join(replacement);
+                        });
+
+                        return (
+                          <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/80 space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-950">
+                              <span className="flex items-center gap-1">
+                                <Smartphone className="w-3.5 h-3.5 text-emerald-600" /> Live Message Preview
+                              </span>
+                              <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded font-mono">
+                                {selectedMetaTemplate.name}
+                              </span>
+                            </div>
+                            <div className="p-3 bg-white rounded-lg border border-emerald-100 shadow-2xs text-xs text-gray-800 whitespace-pre-wrap font-sans leading-relaxed">
+                              {previewText}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

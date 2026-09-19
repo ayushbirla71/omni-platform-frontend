@@ -12,6 +12,8 @@ import type {
   WhatsAppTemplate,
   CreateWhatsAppTemplatePayload,
   Contact,
+  ColumnMapping,
+  SpreadsheetPreview,
   ImportContactsResult,
   Conversation,
   Message,
@@ -133,6 +135,8 @@ export const contactsApi = {
 
   getTags: () => apiClient.get<string[]>('/contacts/tags'),
 
+  getAttributeKeys: () => apiClient.get<string[]>('/contacts/attribute-keys'),
+
   getCount: (options: { channelId?: string; tags?: string; search?: string } = {}) =>
     apiClient.get<{ count: number }>('/contacts/count', options),
 
@@ -143,6 +147,20 @@ export const contactsApi = {
     apiClient.patch<Contact>(`/contacts/${id}`, data),
 
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/contacts/${id}`),
+
+  bulkDelete: (data: {
+    contactIds?: string[];
+    filter?: {
+      channelId?: string;
+      tag?: string;
+      tags?: string[];
+      search?: string;
+      allowAll?: boolean;
+    };
+  }) => apiClient.post<{ deletedCount: number }>('/contacts/bulk-delete', data),
+
+  previewImport: (formData: FormData) =>
+    apiClient.post<SpreadsheetPreview>('/contacts/preview', formData),
 
   importFile: (formData: FormData) =>
     apiClient.post<ImportContactsResult>('/contacts/import', formData),

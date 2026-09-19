@@ -6,6 +6,7 @@ import {
   FileText,
   Sparkles,
   Image as ImageIcon,
+  Video,
   CheckCircle2,
   Maximize2,
   X,
@@ -88,7 +89,7 @@ export const WhatsAppTemplateCard: React.FC<WhatsAppTemplateCardProps> = ({
       </div>
 
       {/* Header Content: Image / Video / Document / Text */}
-      {isImageHeader && (
+      {isImageHeader ? (
         <div className="relative group overflow-hidden bg-gray-100 dark:bg-gray-900 max-h-[260px] flex items-center justify-center">
           <img
             src={headerMediaUrl}
@@ -110,15 +111,29 @@ export const WhatsAppTemplateCard: React.FC<WhatsAppTemplateCardProps> = ({
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
-      )}
+      ) : headerType === 'IMAGE' ? (
+        <div className="h-28 bg-gray-100 dark:bg-gray-800/80 border-b border-dashed border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center text-gray-400 gap-1.5 px-4 text-center">
+          <ImageIcon className="w-6 h-6 text-gray-400" />
+          <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+            Image Header (Upload image)
+          </span>
+        </div>
+      ) : null}
 
-      {isVideoHeader && (
+      {isVideoHeader ? (
         <div className="relative overflow-hidden bg-black max-h-[260px]">
           <video src={headerMediaUrl} controls className="w-full max-h-[260px] object-contain" />
         </div>
-      )}
+      ) : headerType === 'VIDEO' ? (
+        <div className="h-28 bg-gray-900 border-b border-dashed border-gray-700 flex flex-col items-center justify-center text-gray-400 gap-1.5 px-4 text-center">
+          <Video className="w-6 h-6 text-gray-400" />
+          <span className="text-[11px] font-medium text-gray-400">
+            Video Header (Upload video)
+          </span>
+        </div>
+      ) : null}
 
-      {isDocumentHeader && (
+      {isDocumentHeader ? (
         <div className="flex items-center gap-3 p-3 mx-3 mt-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700">
           <div className="p-2.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">
             <FileText className="w-5 h-5" />
@@ -136,7 +151,17 @@ export const WhatsAppTemplateCard: React.FC<WhatsAppTemplateCardProps> = ({
             </a>
           </div>
         </div>
-      )}
+      ) : headerType === 'DOCUMENT' ? (
+        <div className="flex items-center gap-3 p-3 mx-3 mt-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-dashed border-gray-300 dark:border-gray-700">
+          <div className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400">
+            <FileText className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Document Attachment</p>
+            <span className="text-[11px] text-gray-400">Upload document</span>
+          </div>
+        </div>
+      ) : null}
 
       {headerText && (
         <div className="px-4 pt-3.5 pb-1">

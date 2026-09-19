@@ -42,7 +42,6 @@ import {
   TemplateMediaValue,
 } from '../components/common/TemplateMediaUploader';
 import {
-  APPROVED_TEMPLATES_CATALOG,
   registerDynamicTemplates,
   resolveTemplateMessage,
   findTemplateByName,
@@ -74,7 +73,7 @@ export const NewCampaignPage: React.FC = () => {
   const [broadcastMessage, setBroadcastMessage] = useState('');
 
   // WhatsApp HSM Template broadcast states
-  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>(APPROVED_TEMPLATES_CATALOG);
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplate | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
   const [templateMedia, setTemplateMedia] = useState<TemplateMediaValue>({});
@@ -142,11 +141,11 @@ export const NewCampaignPage: React.FC = () => {
 
     // Parse header
     const headerComp = template.components?.find((c) => c.type === 'HEADER');
-    const headerFormat = (headerComp?.format || 'IMAGE').toUpperCase();
-    const exampleUrl = headerComp?.example?.header_handle?.[0] || '';
+    const headerFormat = (headerComp?.format || (headerComp?.text ? 'TEXT' : 'IMAGE')).toUpperCase();
+    const defaultHeaderVal = headerFormat === 'TEXT' && headerComp?.text ? headerComp.text : '';
 
     setTemplateMedia({
-      headerValue: exampleUrl || '',
+      headerValue: defaultHeaderVal,
       mediaStorageKey: '',
       filename: headerFormat === 'DOCUMENT' ? `${template.name}_document.pdf` : undefined,
     });
@@ -164,22 +163,20 @@ export const NewCampaignPage: React.FC = () => {
           const approved = (templates || []).filter(
             (t) => !t.status || t.status.toUpperCase() === 'APPROVED'
           );
-          const listToShow = approved.length > 0 ? approved : templates;
+          const listToShow = approved.length > 0 ? approved : (templates || []);
           if (listToShow && listToShow.length > 0) {
             setChannelTemplates(listToShow);
             registerDynamicTemplates(listToShow);
             handleSelectTemplate(listToShow[0]);
           } else {
-            setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
-            registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
-            handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+            setChannelTemplates([]);
+            setSelectedTemplate(null);
           }
         })
         .catch((err) => {
-          console.warn('[NewCampaignPage] Using fallback template catalog:', err);
-          setChannelTemplates(APPROVED_TEMPLATES_CATALOG);
-          registerDynamicTemplates(APPROVED_TEMPLATES_CATALOG);
-          handleSelectTemplate(APPROVED_TEMPLATES_CATALOG[0]);
+          console.warn('[NewCampaignPage] Failed to load channel templates:', err);
+          setChannelTemplates([]);
+          setSelectedTemplate(null);
         })
         .finally(() => {
           setIsLoadingTemplates(false);
@@ -681,6 +678,14 @@ export const NewCampaignPage: React.FC = () => {
                       <div className="p-3 bg-gray-50 border rounded-xl flex items-center gap-2 text-xs text-gray-500">
                         <Spinner size="sm" />
                         <span>Loading templates from Meta...</span>
+                      </div>
+                    ) : channelTemplates.length === 0 ? (
+                      <div className="p-5 bg-amber-50 rounded-xl border border-amber-200 text-center space-y-2">
+                        <AlertTriangle className="w-6 h-6 text-amber-600 mx-auto" />
+                        <h4 className="text-xs font-bold text-amber-900">No Approved Templates Found</h4>
+                        <p className="text-xs text-amber-700">
+                          This WhatsApp channel doesn't have any approved templates synced. Please sync templates in Channel Settings or create new templates in Meta Business Suite.
+                        </p>
                       </div>
                     ) : (
                       <select

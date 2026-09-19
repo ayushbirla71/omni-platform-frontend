@@ -44,7 +44,6 @@ import { Spinner } from '../components/common/Tabs';
 import { Modal } from '../components/common/Modal';
 import { formatDateTime, cn } from '../lib/utils';
 import {
-  APPROVED_TEMPLATES_CATALOG,
   resolveTemplateMessage,
   findTemplateByName,
 } from '../utils/whatsapp-templates';
@@ -59,6 +58,7 @@ export const CampaignDetailsPage: React.FC = () => {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [recipients, setRecipients] = useState<CampaignRecipient[]>([]);
   const [recipientsTotal, setRecipientsTotal] = useState(0);
+  const [channelTemplates, setChannelTemplates] = useState<WhatsAppTemplate[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingRecipients, setIsLoadingRecipients] = useState(false);
@@ -164,6 +164,23 @@ export const CampaignDetailsPage: React.FC = () => {
 
   const def: any = campaign?.definition || {};
 
+  // Fetch dynamic templates from the campaign's channel
+  useEffect(() => {
+    const channelId = campaign?.channel_id || campaign?.channelDisplayName;
+    if (channelId && campaign?.type === 'broadcast' && def.templateName) {
+      channelsApi
+        .getTemplates(channelId)
+        .then((templates) => {
+          if (templates && templates.length > 0) {
+            setChannelTemplates(templates);
+          }
+        })
+        .catch((err) => {
+          console.warn('[CampaignDetailsPage] Failed to fetch channel templates for preview:', err);
+        });
+    }
+  }, [campaign?.channel_id, campaign?.channelDisplayName, campaign?.type, def.templateName]);
+
   // Resolve template preview if broadcast uses a template
   const templatePreview = useMemo(() => {
     if (!campaign || campaign.type !== 'broadcast' || !def.templateName) return null;
@@ -172,9 +189,9 @@ export const CampaignDetailsPage: React.FC = () => {
       templateParams: def.templateParams || {},
       headerType: def.headerType,
       headerValue: def.headerValue || '',
-      knownTemplates: APPROVED_TEMPLATES_CATALOG,
+      knownTemplates: channelTemplates,
     });
-  }, [campaign, def]);
+  }, [campaign, def, channelTemplates]);
 
   if (isLoading) {
     return (

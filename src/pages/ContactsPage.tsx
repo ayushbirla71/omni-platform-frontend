@@ -19,9 +19,15 @@ import {
   CheckCircle2,
   X,
   AlertCircle,
+  Database,
+  Sparkles,
+  Eye,
+  Settings2,
+  Table,
+  Check,
 } from 'lucide-react';
 import { contactsApi, dealsApi, channelsApi } from '../api';
-import type { Contact, Deal, Channel } from '../types';
+import type { Contact, Deal, Channel, SpreadsheetPreview, ColumnMapping } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useDialog } from '../context/DialogContext';
 import { Card } from '../components/common/Card';
@@ -34,6 +40,12 @@ import { formatDateTime, cn } from '../lib/utils';
 
 const PRESET_TAG_SUGGESTIONS = ['followup', 'up', 'mp', 'vip', 'lead', 'customer', 'hot', 'new'];
 
+interface CustomFieldItem {
+  header: string;
+  attributeKey: string;
+  enabled: boolean;
+}
+
 export const ContactsPage: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -43,6 +55,7 @@ export const ContactsPage: React.FC = () => {
   const [channelFilter, setChannelFilter] = useState<string>('all');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // Add Contact Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -54,13 +67,21 @@ export const ContactsPage: React.FC = () => {
   const [newTagInput, setNewTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Import Modal
+  // Import Modal & Column Mapping
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importChannelId, setImportChannelId] = useState('');
   const [importTags, setImportTags] = useState<string[]>(['followup']);
   const [importTagInput, setImportTagInput] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<SpreadsheetPreview | null>(null);
+  const [nameColumn, setNameColumn] = useState<string>('');
+  const [phoneColumn, setPhoneColumn] = useState<string>('');
+  const [emailColumn, setEmailColumn] = useState<string>('');
+  const [tagsColumn, setTagsColumn] = useState<string>('');
+  const [customFields, setCustomFields] = useState<CustomFieldItem[]>([]);
+  const [showPreviewTable, setShowPreviewTable] = useState(false);
   const [importResult, setImportResult] = useState<{
     total: number;
     imported: number;
@@ -138,6 +159,50 @@ export const ContactsPage: React.FC = () => {
     }
   };
 
+  const handleFileSelect = async (file: File) => {
+    setImportFile(file);
+    setImportResult(null);
+    setIsPreviewLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const preview = await contactsApi.previewImport(fd);
+      setPreviewData(preview);
+
+      const { suggestedMapping, headers } = preview;
+      const nameCol = suggestedMapping.nameColumn || '';
+      const phoneCol = suggestedMapping.phoneColumn || '';
+      const emailCol = suggestedMapping.emailColumn || '';
+      const tagsCol = suggestedMapping.tagsColumn || '';
+
+      setNameColumn(nameCol);
+      setPhoneColumn(phoneCol);
+      setEmailColumn(emailCol);
+      setTagsColumn(tagsCol);
+
+      const standardCols = new Set([nameCol, phoneCol, emailCol, tagsCol].filter(Boolean));
+      const initialCustom: CustomFieldItem[] = headers
+        .filter((h) => !standardCols.has(h))
+        .map((h) => ({
+          header: h,
+          attributeKey:
+            suggestedMapping.customFields[h] ||
+            h
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9_]+/g, '_')
+              .replace(/^_+|_+$/g, '') ||
+            'field',
+          enabled: true,
+        }));
+      setCustomFields(initialCustom);
+    } catch (err: any) {
+      showToast(err instanceof Error ? err.message : 'Failed to inspect spreadsheet headers', 'error');
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
   const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!importFile) {
@@ -145,13 +210,34 @@ export const ContactsPage: React.FC = () => {
       return;
     }
 
+    if (!phoneColumn) {
+      showToast('Please select a column for Contact Number / Phone (Required)', 'error');
+      return;
+    }
+
     setIsImporting(true);
     setImportResult(null);
+
+    const customFieldMap: Record<string, string> = {};
+    for (const item of customFields) {
+      if (item.enabled && item.attributeKey.trim()) {
+        customFieldMap[item.header] = item.attributeKey.trim();
+      }
+    }
+
+    const mapping: ColumnMapping = {
+      nameColumn: nameColumn || undefined,
+      phoneColumn: phoneColumn || undefined,
+      emailColumn: emailColumn || undefined,
+      tagsColumn: tagsColumn || undefined,
+      customFields: Object.keys(customFieldMap).length > 0 ? customFieldMap : undefined,
+    };
 
     const formData = new FormData();
     formData.append('file', importFile);
     if (importChannelId) formData.append('channelId', importChannelId);
     if (importTags.length > 0) formData.append('tags', importTags.join(','));
+    formData.append('mapping', JSON.stringify(mapping));
 
     try {
       const result = await contactsApi.importFile(formData);
@@ -178,9 +264,99 @@ export const ContactsPage: React.FC = () => {
       await contactsApi.delete(contactId);
       setContacts((prev) => prev.filter((c) => c.id !== contactId));
       if (selectedContact?.id === contactId) setSelectedContact(null);
+      if (selectedContacts.has(contactId)) {
+        const next = new Set(selectedContacts);
+        next.delete(contactId);
+        setSelectedContacts(next);
+      }
       showToast('Contact deleted', 'success');
+      contactsApi.getTags().then(setAvailableTags).catch(() => {});
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to delete contact', 'error');
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedContacts.size === 0) return;
+    const count = selectedContacts.size;
+    const ok = await confirm({
+      title: `Delete ${count} Selected Contact${count > 1 ? 's' : ''}`,
+      message: `Are you sure you want to delete ${count} selected contact${count > 1 ? 's' : ''}? Associated conversation history, deals, and campaign recipient records will be permanently removed.`,
+      confirmText: `Delete ${count} Contact${count > 1 ? 's' : ''}`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const ids = Array.from(selectedContacts);
+      const result = await contactsApi.bulkDelete({ contactIds: ids });
+      const deletedCount = result.deletedCount || ids.length;
+      const idSet = new Set(ids);
+      setContacts((prev) => prev.filter((c) => !idSet.has(c.id)));
+      setSelectedContacts(new Set());
+      if (selectedContact && idSet.has(selectedContact.id)) {
+        setSelectedContact(null);
+      }
+      showToast(`${deletedCount} contact${deletedCount > 1 ? 's' : ''} deleted successfully`, 'success');
+      contactsApi.getTags().then(setAvailableTags).catch(() => {});
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to bulk delete contacts', 'error');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const handleDeleteMatchingFilter = async () => {
+    if (filteredContacts.length === 0) return;
+    const count = filteredContacts.length;
+
+    const filterDescriptions: string[] = [];
+    if (selectedTagFilter !== 'all') filterDescriptions.push(`Tag: #${selectedTagFilter}`);
+    if (channelFilter !== 'all') {
+      const ch = channels.find((c) => c.id === channelFilter);
+      filterDescriptions.push(`Channel: ${ch?.displayName || ch?.type || channelFilter}`);
+    }
+    if (searchQuery.trim()) filterDescriptions.push(`Search: "${searchQuery.trim()}"`);
+
+    const filterSummary =
+      filterDescriptions.length > 0
+        ? `matching current filters (${filterDescriptions.join(', ')})`
+        : 'in the entire contact list';
+
+    const ok = await confirm({
+      title: `Delete All ${count} Filtered Contacts`,
+      message: `Are you sure you want to delete all ${count} contacts ${filterSummary}? This will permanently remove all matching contacts, conversations, and deals.`,
+      confirmText: `Delete All ${count} Contacts`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const ids = filteredContacts.map((c) => c.id);
+      const result = await contactsApi.bulkDelete({
+        contactIds: ids,
+        filter: {
+          channelId: channelFilter !== 'all' ? channelFilter : undefined,
+          tag: selectedTagFilter !== 'all' ? selectedTagFilter : undefined,
+          search: searchQuery.trim() || undefined,
+          allowAll: true,
+        },
+      });
+      const deletedCount = result.deletedCount || ids.length;
+      const idSet = new Set(ids);
+      setContacts((prev) => prev.filter((c) => !idSet.has(c.id)));
+      setSelectedContacts(new Set());
+      if (selectedContact && idSet.has(selectedContact.id)) {
+        setSelectedContact(null);
+      }
+      showToast(`${deletedCount} filtered contact${deletedCount > 1 ? 's' : ''} deleted successfully`, 'success');
+      contactsApi.getTags().then(setAvailableTags).catch(() => {});
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete filtered contacts', 'error');
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -252,16 +428,16 @@ export const ContactsPage: React.FC = () => {
 
   const handleDownloadSampleCsv = () => {
     const csvContent =
-      'Name,Phone,Email,Tags\n' +
-      'John Doe,+14155552671,john@example.com,"followup, up"\n' +
-      'Jane Smith,+14155552672,jane@example.com,"mp, hot"\n' +
-      'David Miller,+14155552673,david@example.com,"lead, followup"\n';
+      'Name,Phone,Email,Company,Product,Price,Tags\n' +
+      'John Doe,+14155552671,john@example.com,Acme Corp,Omni Suite,299,"followup, up"\n' +
+      'Jane Smith,+14155552672,jane@example.com,Starlight Inc,AI Pro,499,"mp, hot"\n' +
+      'David Miller,+14155552673,david@example.com,Global Traders,Starter,99,"lead, followup"\n';
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', 'contacts_sample_template.csv');
+    link.setAttribute('download', 'contacts_with_custom_fields_sample.csv');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -414,26 +590,54 @@ export const ContactsPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Select All Checkbox & Count */}
+        {/* Select All Checkbox & Bulk Actions Bar */}
         {filteredContacts.length > 0 && (
-          <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-600">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={selectedContacts.size === filteredContacts.length && filteredContacts.length > 0}
-                onChange={handleSelectAll}
-                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <label className="font-semibold cursor-pointer" onClick={handleSelectAll}>
-                Select All ({filteredContacts.length} matching contacts)
-              </label>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100 text-xs text-gray-600">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="select-all-contacts"
+                  checked={selectedContacts.size === filteredContacts.length && filteredContacts.length > 0}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <label htmlFor="select-all-contacts" className="font-semibold cursor-pointer select-none">
+                  Select All ({filteredContacts.length} matching contacts)
+                </label>
+              </div>
+
+              {/* Filter active indicator & quick bulk delete filtered button */}
+              {(selectedTagFilter !== 'all' || channelFilter !== 'all' || searchQuery.trim() !== '') && (
+                <button
+                  type="button"
+                  onClick={handleDeleteMatchingFilter}
+                  disabled={isBulkDeleting}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors"
+                  title="Delete all contacts matching the current active filters"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Delete Filtered ({filteredContacts.length})</span>
+                </button>
+              )}
             </div>
 
             {selectedContacts.size > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="primary" size="md">
                   {selectedContacts.size} selected
                 </Badge>
+
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  isLoading={isBulkDeleting}
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                >
+                  Delete Selected ({selectedContacts.size})
+                </Button>
+
                 <Link to="/campaigns/new">
                   <Button variant="primary" size="sm" icon={<MessageSquare className="w-3 h-3" />}>
                     Send Broadcast / Flow
@@ -610,16 +814,16 @@ export const ContactsPage: React.FC = () => {
       <Modal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        title="Import Contacts from CSV or Excel"
-        description="Upload a spreadsheet with contacts and automatically assign audience segmentation tags"
-        maxWidth="lg"
+        title="Import Contacts & Configure Column Mapping"
+        description="Upload CSV or Excel spreadsheets, map standard contact fields, and extract custom variables for Flow Builder & WhatsApp templates."
+        maxWidth="2xl"
       >
-        <form onSubmit={handleImportSubmit} className="space-y-5">
+        <form onSubmit={handleImportSubmit} className="space-y-6">
           {/* File Dropzone */}
           <div
             onClick={() => fileInputRef.current?.click()}
             className={cn(
-              'border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all',
+              'border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all',
               importFile
                 ? 'border-emerald-500 bg-emerald-50/40'
                 : 'border-gray-300 hover:border-primary-500 hover:bg-primary-50/20'
@@ -631,27 +835,274 @@ export const ContactsPage: React.FC = () => {
               accept=".csv,.xlsx,.xls"
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
-                  setImportFile(e.target.files[0]);
+                  handleFileSelect(e.target.files[0]);
                 }
               }}
               className="hidden"
             />
-            {importFile ? (
-              <div className="space-y-2">
-                <FileSpreadsheet className="w-10 h-10 text-emerald-600 mx-auto" />
-                <p className="text-sm font-bold text-gray-900">{importFile.name}</p>
-                <p className="text-xs text-gray-500">{(importFile.size / 1024).toFixed(1)} KB • Click to change file</p>
+            {isPreviewLoading ? (
+              <div className="py-4 flex flex-col items-center gap-2">
+                <Spinner size="md" />
+                <p className="text-xs font-semibold text-gray-600">Inspecting spreadsheet columns and headers...</p>
+              </div>
+            ) : importFile ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-center gap-2">
+                  <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
+                  <div className="text-left">
+                    <p className="text-sm font-bold text-gray-900">{importFile.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {(importFile.size / 1024).toFixed(1)} KB • {previewData?.totalRows || 0} rows detected • Click to replace file
+                    </p>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
                 <Upload className="w-10 h-10 text-gray-400 mx-auto" />
                 <p className="text-sm font-bold text-gray-800">Choose CSV or Excel (.xlsx, .xls) file</p>
-                <p className="text-xs text-gray-500">Supported columns: Name, Phone/Mobile, Email, Tags</p>
+                <p className="text-xs text-gray-500">
+                  Supports custom columns like Company, Product, Price, Order ID, etc.
+                </p>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {previewData && (
+            <div className="space-y-5">
+              {/* STEP 1: Main System Columns Mapping */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-primary-600" />
+                  <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                    Step 1: Map Main System Columns
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Phone Column (Required) */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">
+                      Contact Number / Phone <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={phoneColumn}
+                      onChange={(e) => setPhoneColumn(e.target.value)}
+                      className={cn(
+                        'w-full rounded-xl border px-3 py-2 text-xs bg-white font-medium',
+                        !phoneColumn ? 'border-rose-300 ring-1 ring-rose-300' : 'border-gray-200'
+                      )}
+                      required
+                    >
+                      <option value="">-- Select Phone Column --</option>
+                      {previewData.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h} {previewData.previewRows[0]?.[h] ? `(e.g. "${previewData.previewRows[0][h]}")` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Name Column */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Contact Name</label>
+                    <select
+                      value={nameColumn}
+                      onChange={(e) => setNameColumn(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white font-medium"
+                    >
+                      <option value="">-- Optional / None --</option>
+                      {previewData.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h} {previewData.previewRows[0]?.[h] ? `(e.g. "${previewData.previewRows[0][h]}")` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Email Column */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Email Address</label>
+                    <select
+                      value={emailColumn}
+                      onChange={(e) => setEmailColumn(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white font-medium"
+                    >
+                      <option value="">-- Optional / None --</option>
+                      {previewData.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h} {previewData.previewRows[0]?.[h] ? `(e.g. "${previewData.previewRows[0][h]}")` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Tags Column */}
+                  <div className="space-y-1">
+                    <label className="block text-xs font-semibold text-gray-700">Tags Column in Spreadsheet</label>
+                    <select
+                      value={tagsColumn}
+                      onChange={(e) => setTagsColumn(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs bg-white font-medium"
+                    >
+                      <option value="">-- Optional / None --</option>
+                      {previewData.headers.map((h) => (
+                        <option key={h} value={h}>
+                          {h} {previewData.previewRows[0]?.[h] ? `(e.g. "${previewData.previewRows[0][h]}")` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* STEP 2: Custom Variable Fields (Attributes) */}
+              <div className="p-4 rounded-xl bg-purple-50/50 border border-purple-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    <div>
+                      <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                        Step 2: Custom Variable Fields (Attributes)
+                      </h4>
+                      <p className="text-[11px] text-gray-600">
+                        Extract extra columns (Company, Product, Price, Order ID) to use in WhatsApp templates & Flow Builder as{' '}
+                        <code className="text-purple-700 font-mono font-bold bg-purple-100 px-1 py-0.5 rounded">
+                          {`{{contact.attributes.<key>}}`}
+                        </code>
+                      </p>
+                    </div>
+                  </div>
+                  {customFields.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allEnabled = customFields.every((f) => f.enabled);
+                        setCustomFields(customFields.map((f) => ({ ...f, enabled: !allEnabled })));
+                      }}
+                      className="text-[11px] font-semibold text-purple-700 hover:text-purple-900 underline"
+                    >
+                      {customFields.every((f) => f.enabled) ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
+                </div>
+
+                {customFields.length === 0 ? (
+                  <div className="p-3 bg-white rounded-lg border border-purple-100 text-center text-xs text-gray-500">
+                    All detected spreadsheet columns are currently mapped to main system fields.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {customFields.map((field, idx) => (
+                      <div
+                        key={field.header}
+                        className={cn(
+                          'p-2.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3',
+                          field.enabled
+                            ? 'bg-white border-purple-200 shadow-2xs'
+                            : 'bg-gray-50/60 border-gray-200 opacity-60'
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-[180px]">
+                          <input
+                            type="checkbox"
+                            id={`custom-field-${idx}`}
+                            checked={field.enabled}
+                            onChange={(e) => {
+                              const updated = [...customFields];
+                              updated[idx].enabled = e.target.checked;
+                              setCustomFields(updated);
+                            }}
+                            className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                          />
+                          <label
+                            htmlFor={`custom-field-${idx}`}
+                            className="text-xs font-bold text-gray-900 cursor-pointer"
+                          >
+                            {field.header}
+                          </label>
+                          {previewData.previewRows[0]?.[field.header] !== undefined && (
+                            <span className="text-[10px] text-gray-500 truncate max-w-[120px]">
+                              (e.g. "{String(previewData.previewRows[0][field.header])}")
+                            </span>
+                          )}
+                        </div>
+
+                        {field.enabled && (
+                          <div className="flex items-center gap-2 flex-1 justify-end">
+                            <span className="text-[11px] text-gray-500">Save as key:</span>
+                            <input
+                              type="text"
+                              value={field.attributeKey}
+                              onChange={(e) => {
+                                const updated = [...customFields];
+                                updated[idx].attributeKey = e.target.value
+                                  .toLowerCase()
+                                  .replace(/[^a-z0-9_]/g, '_');
+                                setCustomFields(updated);
+                              }}
+                              placeholder="attribute_key"
+                              className="text-xs px-2.5 py-1 font-mono rounded-lg border border-purple-200 bg-purple-50/30 text-purple-900 w-32 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            />
+                            <span className="hidden md:inline-flex text-[10px] font-mono bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md font-semibold">
+                              {`{{contact.attributes.${field.attributeKey || 'key'}}}`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* STEP 3: Preview Spreadsheet Data Table (Collapsible) */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewTable(!showPreviewTable)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-left transition-colors"
+                >
+                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                    <Table className="w-3.5 h-3.5 text-gray-500" />
+                    Preview Spreadsheet Rows ({previewData.previewRows.length} sample rows)
+                  </span>
+                  <span className="text-xs text-primary-600 font-semibold">
+                    {showPreviewTable ? 'Hide Preview' : 'Show Preview'}
+                  </span>
+                </button>
+
+                {showPreviewTable && (
+                  <div className="p-2 overflow-x-auto max-h-48 bg-white">
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          {previewData.headers.map((h) => (
+                            <th key={h} className="px-3 py-1.5 font-bold text-gray-600 uppercase">
+                              {h}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {previewData.previewRows.map((row, rIdx) => (
+                          <tr key={rIdx} className="hover:bg-gray-50">
+                            {previewData.headers.map((h) => (
+                              <td key={h} className="px-3 py-1.5 text-gray-700 whitespace-nowrap">
+                                {String(row[h] || '—')}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Target Channel & Default Tags */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
             {/* Channel Selection */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -684,7 +1135,7 @@ export const ContactsPage: React.FC = () => {
                 icon={<Download className="w-4 h-4 text-gray-600" />}
                 className="w-full justify-center"
               >
-                Download Sample CSV
+                Download Sample CSV with Custom Columns
               </Button>
             </div>
           </div>
@@ -692,7 +1143,7 @@ export const ContactsPage: React.FC = () => {
           {/* Tag Assignment on Import */}
           <div className="space-y-2">
             <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              Assign Tags to Imported Contacts (e.g. followup, up, mp)
+              Assign Default Audience Tags (e.g. followup, up, mp, hot)
             </label>
 
             {/* Tag Pills */}
@@ -762,7 +1213,7 @@ export const ContactsPage: React.FC = () => {
               </div>
               <p className="text-xs text-emerald-900">
                 Processed <b>{importResult.total}</b> total rows. Created <b>{importResult.imported}</b> new contacts,
-                updated <b>{importResult.updated}</b> existing contacts.
+                updated <b>{importResult.updated}</b> existing contacts with custom attributes.
               </p>
               {importResult.errors.length > 0 && (
                 <div className="text-[11px] text-rose-700 bg-rose-50 p-2 rounded border border-rose-200 max-h-24 overflow-y-auto">
@@ -777,16 +1228,16 @@ export const ContactsPage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
             <Button variant="outline" type="button" onClick={() => setIsImportModalOpen(false)}>
-              Close
+              Cancel
             </Button>
             <Button
               variant="primary"
               type="submit"
               isLoading={isImporting}
-              disabled={!importFile}
+              disabled={!importFile || !phoneColumn}
               icon={<Upload className="w-4 h-4" />}
             >
-              Start Import
+              Start Import with Mappings
             </Button>
           </div>
         </form>
@@ -1003,6 +1454,41 @@ export const ContactsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Custom Attributes */}
+            {selectedContact.attributes &&
+              Object.keys(selectedContact.attributes).filter((k) => k !== 'tags' && k !== 'email').length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-purple-600" />
+                      Custom Attributes (Flow Builder & Template Variables)
+                    </span>
+                  </label>
+                  <div className="p-3 rounded-xl bg-purple-50/40 border border-purple-100 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Object.entries(selectedContact.attributes)
+                        .filter(([k]) => k !== 'tags' && k !== 'email')
+                        .map(([key, val]) => (
+                          <div
+                            key={key}
+                            className="p-2 rounded-lg bg-white border border-purple-200/60 shadow-2xs space-y-0.5"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase">{key}</span>
+                              <span className="text-[9px] font-mono text-purple-700 bg-purple-100 px-1 rounded">
+                                {`{{contact.attributes.${key}}}`}
+                              </span>
+                            </div>
+                            <p className="text-xs font-semibold text-gray-900 truncate">
+                              {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
             {/* Associated Deals */}
             <div className="space-y-3">
