@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
+  Info,
   XCircle,
   Send,
   Repeat,
@@ -43,6 +44,8 @@ import { Button } from '../components/common/Button';
 import { Spinner } from '../components/common/Tabs';
 import { Modal } from '../components/common/Modal';
 import { formatDateTime, cn } from '../lib/utils';
+import { DeliveryFailureNote } from '../components/common/DeliveryFailureNote';
+import { getDeliveryFailure } from '../utils/whatsapp-errors';
 import {
   resolveTemplateMessage,
   findTemplateByName,
@@ -50,19 +53,6 @@ import {
 
 // How often the page re-reads analytics while messages are still being sent or awaiting receipts
 const LIVE_REFRESH_MS = 10_000;
-
-/** Plain-language hints for the most common WhatsApp Cloud API delivery errors */
-const WHATSAPP_ERROR_HINTS: Record<string, string> = {
-  '131049': 'Meta chose not to deliver this marketing message to protect the recipient (per-user marketing limits). Retrying later or using a utility template can help.',
-  '131026': 'The number is not reachable on WhatsApp (not registered, blocked, or an outdated app version).',
-  '131047': 'The 24-hour customer-service window is closed. Use an approved template message instead.',
-  '131048': 'Spam rate limit hit for this phone number. Slow down sending or improve template quality.',
-  '131056': 'Too many messages to this recipient in a short time (pair rate limit).',
-  '130429': 'Cloud API throughput limit reached. Retry with a lower send rate.',
-  '132000': 'Template parameter count does not match the approved template.',
-  '132001': 'The template does not exist in this language or is not approved.',
-  '132012': 'A template parameter has the wrong format.',
-};
 
 export const CampaignDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -299,9 +289,9 @@ export const CampaignDetailsPage: React.FC = () => {
                 variant={
                   campaign.status === 'completed'
                     ? 'success'
-                    : campaign.status === 'failed'
-                    ? 'danger'
-                    : campaign.status === 'sending' || campaign.status === 'partially_failed'
+                    : campaign.status === 'sending' ||
+                      campaign.status === 'partially_failed' ||
+                      campaign.status === 'failed'
                     ? 'warning'
                     : 'secondary'
                 }
@@ -448,16 +438,16 @@ export const CampaignDetailsPage: React.FC = () => {
           <p className="text-[11px] text-gray-400 mt-1">{metrics.pendingRate}% waiting or scheduled</p>
         </Card>
 
-        {/* Failed / Bounced */}
+        {/* Not delivered */}
         <Card className="p-4 bg-white border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Failed</span>
-            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-              <AlertCircle className="w-4 h-4" />
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Not delivered</span>
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center">
+              <Info className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-bold text-rose-600">{metrics.failedCount.toLocaleString()}</div>
-          <p className="text-[11px] text-rose-500 mt-1">{metrics.failureRate}% failure rate</p>
+          <div className="text-2xl font-bold text-slate-700">{metrics.failedCount.toLocaleString()}</div>
+          <p className="text-[11px] text-slate-500 mt-1">{metrics.failureRate}% of the audience</p>
         </Card>
       </div>
 
@@ -473,7 +463,7 @@ export const CampaignDetailsPage: React.FC = () => {
               </div>
               <span className="text-xs text-gray-400">
                 {metrics.acceptedTotal} of {metrics.totalRecipients} accepted by provider
-                {metrics.failedCount > 0 && ` • ${metrics.failedCount} failed`}
+                {metrics.failedCount > 0 && ` • ${metrics.failedCount} not delivered`}
               </span>
             </div>
 
@@ -517,9 +507,9 @@ export const CampaignDetailsPage: React.FC = () => {
                 )}
                 {failedPercent > 0 && (
                   <div
-                    className="bg-rose-500 h-full transition-all duration-500"
+                    className="bg-slate-400 h-full transition-all duration-500"
                     style={{ width: `${failedPercent}%` }}
-                    title={`Failed: ${metrics.failedCount} (${failedPercent}%)`}
+                    title={`Not delivered: ${metrics.failedCount} (${failedPercent}%)`}
                   />
                 )}
               </div>
@@ -576,11 +566,11 @@ export const CampaignDetailsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-rose-50/60 border border-rose-100">
-                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-rose-900 uppercase">Failed</p>
-                    <p className="text-xs font-bold text-rose-700">
+                    <p className="text-[10px] font-semibold text-slate-700 uppercase">Not delivered</p>
+                    <p className="text-xs font-bold text-slate-700">
                       {metrics.failedCount} ({failedPercent}%)
                     </p>
                   </div>
@@ -589,34 +579,35 @@ export const CampaignDetailsPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Why messages failed */}
+          {/* Why messages were not delivered */}
           {(analytics?.failureReasons?.length ?? 0) > 0 && (
             <Card className="p-5 space-y-3">
               <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600" />
-                <h3 className="text-sm font-bold text-gray-900">Why messages failed</h3>
+                <Info className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-bold text-gray-900">Why messages were not delivered</h3>
               </div>
               <div className="divide-y divide-gray-100">
-                {analytics!.failureReasons!.map((f) => (
-                  <div key={`${f.errorCode ?? 'none'}-${f.reason}`} className="py-2.5 flex items-start justify-between gap-4">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {f.errorCode && (
-                          <Badge variant="danger" size="sm" className="font-mono">
-                            {f.errorCode}
-                          </Badge>
-                        )}
-                        <p className="text-xs font-semibold text-gray-900 break-words">{f.reason}</p>
+                {analytics!.failureReasons!.map((f) => {
+                  const info = getDeliveryFailure(f.errorCode, f.reason);
+                  return (
+                    <div key={`${f.errorCode ?? 'none'}-${f.reason}`} className="py-2.5 flex items-start justify-between gap-4">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {f.errorCode && (
+                            <Badge variant="secondary" size="sm" className="tabular-nums">
+                              {f.errorCode}
+                            </Badge>
+                          )}
+                          <p className="text-xs font-medium text-gray-900 break-words">{info.title}</p>
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed">{info.hint}</p>
                       </div>
-                      {f.errorCode && WHATSAPP_ERROR_HINTS[f.errorCode] && (
-                        <p className="text-[11px] text-gray-500 leading-relaxed">{WHATSAPP_ERROR_HINTS[f.errorCode]}</p>
-                      )}
+                      <span className="text-sm font-semibold text-gray-700 shrink-0">
+                        {f.count} {f.count === 1 ? 'message' : 'messages'}
+                      </span>
                     </div>
-                    <span className="text-sm font-bold text-rose-600 shrink-0">
-                      {f.count} {f.count === 1 ? 'message' : 'messages'}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -866,7 +857,7 @@ export const CampaignDetailsPage: React.FC = () => {
                       : 'text-gray-500 hover:text-gray-900'
                   )}
                 >
-                  {st}
+                  {st === 'failed' ? 'not delivered' : st}
                 </button>
               ))}
             </div>
@@ -920,33 +911,15 @@ export const CampaignDetailsPage: React.FC = () => {
                       {/* Delivery Status */}
                       <td className="py-3 px-4">
                         {rec.status === 'failed' ? (
-                          <div className="relative inline-flex items-center group">
-                            <Badge
-                              variant="danger"
-                              size="sm"
-                              className="capitalize font-bold flex items-center gap-1 cursor-pointer bg-red-600 text-white hover:bg-red-700 shadow-2xs transition-colors"
-                              title={rec.last_error ? `Delivery Failed: ${rec.last_error}` : 'Delivery Failed'}
-                            >
-                              <XCircle className="w-3 h-3 text-white shrink-0" />
-                              <span>failed</span>
-                            </Badge>
-                            {/* Hover Tooltip Popover */}
-                            <div className="absolute bottom-full left-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
-                              <div className="flex items-center gap-1.5 pb-1.5 border-b border-gray-800 text-red-400 font-bold text-xs">
-                                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                                <span>Delivery Failure Reason</span>
-                              </div>
-                              <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words font-mono">
-                                {rec.last_error || 'Message delivery failed. Please check WhatsApp channel connection.'}
-                              </p>
-                              <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900 font-sans">
-                                <span>WhatsApp Campaign</span>
-                                <span className="text-red-400 font-bold">Failed</span>
-                              </div>
-                              {/* Arrow pointer */}
-                              <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-gray-950" />
-                            </div>
-                          </div>
+                          <Badge
+                            variant="warning"
+                            size="sm"
+                            className="font-medium inline-flex items-center gap-1"
+                            title="Not delivered (details in the next columns)"
+                          >
+                            <Info className="w-3 h-3 shrink-0" />
+                            <span>Not delivered</span>
+                          </Badge>
                         ) : (
                           <Badge
                             variant={
@@ -956,7 +929,7 @@ export const CampaignDetailsPage: React.FC = () => {
                                 ? 'primary'
                                 : rec.status === 'pending'
                                 ? 'warning'
-                                : 'danger'
+                                : 'secondary'
                             }
                             size="sm"
                             className="capitalize font-semibold"
@@ -987,16 +960,8 @@ export const CampaignDetailsPage: React.FC = () => {
 
                       {/* Diagnostic Errors */}
                       <td className="py-3 px-4 max-w-sm">
-                        {rec.last_error ? (
-                          <div className="text-red-950 dark:text-red-50 bg-red-50 dark:bg-red-950/90 p-2.5 rounded-xl border-2 border-red-400/80 dark:border-red-600 space-y-1 shadow-2xs">
-                            <div className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-red-900 dark:text-red-100">
-                              <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
-                              <span>Delivery Failed</span>
-                            </div>
-                            <p className="text-xs leading-relaxed break-words text-red-950 dark:text-red-50 font-mono font-semibold">
-                              {rec.last_error}
-                            </p>
-                          </div>
+                        {rec.status === 'failed' ? (
+                          <DeliveryFailureNote variant="row" code={rec.error_code} message={rec.last_error} />
                         ) : (
                           <span className="text-gray-400 text-[11px]">—</span>
                         )}

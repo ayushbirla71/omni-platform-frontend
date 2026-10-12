@@ -268,9 +268,9 @@ export const CampaignsPage: React.FC = () => {
                           variant={
                             campaign.status === 'completed'
                               ? 'success'
-                              : campaign.status === 'failed'
-                              ? 'danger'
-                              : campaign.status === 'sending' || campaign.status === 'partially_failed'
+                              : campaign.status === 'sending' ||
+                                campaign.status === 'partially_failed' ||
+                                campaign.status === 'failed'
                               ? 'warning'
                               : 'secondary'
                           }
@@ -299,7 +299,7 @@ export const CampaignsPage: React.FC = () => {
                           <Users className="w-3.5 h-3.5 text-gray-400" />
                           <span>
                             {sentCount} / {totalRecipients} recipients
-                            {failedCount > 0 && <span className="text-rose-600 font-semibold"> • {failedCount} failed</span>}
+                            {failedCount > 0 && <span className="text-amber-700 font-medium"> • {failedCount} not delivered</span>}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
@@ -326,7 +326,7 @@ export const CampaignsPage: React.FC = () => {
                                 campaign.status === 'completed'
                                   ? 'bg-emerald-500'
                                   : campaign.status === 'failed'
-                                  ? 'bg-rose-500'
+                                  ? 'bg-amber-500'
                                   : campaign.status === 'partially_failed'
                                   ? 'bg-amber-500'
                                   : 'bg-gradient-to-r from-primary-500 to-primary-600'

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   MessageSquare,
@@ -54,6 +54,8 @@ import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
 import { Spinner } from '../components/common/Tabs';
 import { Modal } from '../components/common/Modal';
+import { DeliveryFailureNote } from '../components/common/DeliveryFailureNote';
+import { MessageStatusTicks } from '../components/chat/MessageStatusTicks';
 import { Input } from '../components/common/Input';
 import { formatDateTime, formatRelativeTime, cn } from '../lib/utils';
 import { WhatsAppTemplateCard } from '../components/chat/WhatsAppTemplateCard';
@@ -170,6 +172,9 @@ export const InboxPage: React.FC = () => {
   const [isResumingBot, setIsResumingBot] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // True while the agent is reading the latest messages; false once they scroll up to read history
+  const stickToBottomRef = useRef(true);
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
   const { showToast } = useToast();
@@ -213,8 +218,20 @@ export const InboxPage: React.FC = () => {
     return null;
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const feed = messagesContainerRef.current;
+    if (!feed) return;
+    feed.scrollTo({ top: feed.scrollHeight, behavior });
+  };
+
+  const handleMessagesScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const feed = e.currentTarget;
+    stickToBottomRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 120;
+  };
+
+  // Images, videos and audio change the feed height after they load; stay on the latest message
+  const handleMessagesMediaLoad = () => {
+    if (stickToBottomRef.current) scrollToBottom('auto');
   };
 
   // Load conversations list
@@ -255,11 +272,13 @@ export const InboxPage: React.FC = () => {
     }
 
     const loadMessagesAndContact = async () => {
+      stickToBottomRef.current = true;
       setIsLoadingMessages(true);
       try {
         const msgs = await conversationsApi.getMessages(selectedConvId);
         setMessages(msgs);
-        setTimeout(scrollToBottom, 50);
+        // The chat must not wait for the contact/deals/orders requests below (three more round trips)
+        setIsLoadingMessages(false);
 
         // Load contact details, deals & orders
         const currentConv = conversations.find((c) => c.id === selectedConvId);
@@ -290,6 +309,13 @@ export const InboxPage: React.FC = () => {
 
     loadMessagesAndContact();
   }, [selectedConvId]);
+
+  // Scroll once the messages are actually rendered. A fixed timer fires too early on a real network,
+  // while the feed still shows the spinner, and leaves the chat at the top.
+  useLayoutEffect(() => {
+    if (isLoadingMessages) return;
+    if (stickToBottomRef.current) scrollToBottom('auto');
+  }, [messages, isLoadingMessages, selectedConvId]);
 
   // Fetch Smart Reply suggestions for active conversation
   const fetchSmartReplies = async (convId?: string) => {
@@ -1678,7 +1704,13 @@ export const InboxPage: React.FC = () => {
             </div>
 
             {/* Messages Feed */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-hide">
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              onLoadCapture={handleMessagesMediaLoad}
+              onLoadedMetadataCapture={handleMessagesMediaLoad}
+              className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-hide"
+            >
               {isLoadingMessages ? (
                 <div className="py-12">
                   <Spinner size="md" />
@@ -1736,53 +1768,7 @@ export const InboxPage: React.FC = () => {
                             )}
                           >
                             <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
-                            {isOutbound && (
-                              <div className="relative inline-flex items-center group">
-                                {msg.status === 'failed' ? (
-                                  <div className="relative flex items-center cursor-pointer">
-                                    <div className="flex items-center gap-1 text-red-700 bg-red-100 hover:bg-red-200 dark:bg-red-950 dark:text-red-300 px-1.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 transition-colors shadow-2xs">
-                                      <AlertCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0 animate-pulse" />
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Failed</span>
-                                    </div>
-                                    {/* Hover Tooltip Popover */}
-                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
-                                      <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-gray-800">
-                                        <div className="flex items-center gap-1.5 text-red-400 font-bold text-xs">
-                                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                                          <span>Delivery Failed</span>
-                                        </div>
-                                        {(msg.errorCode || msg.error_code) && (
-                                          <span className="px-1.5 py-0.5 bg-red-900 text-red-200 border border-red-700 rounded text-[10px] font-mono font-bold">
-                                            Error #{msg.errorCode || msg.error_code}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words">
-                                        {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
-                                      </p>
-                                      <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900">
-                                        <span>Status</span>
-                                        <span className="text-red-400 font-bold">Undelivered</span>
-                                      </div>
-                                      {/* Arrow pointer */}
-                                      <div className="absolute top-full right-4 -mt-1 border-4 border-transparent border-t-gray-950" />
-                                    </div>
-                                  </div>
-                                ) : msg.status === 'read' ? (
-                                  <span title="Read by customer" className="flex items-center ml-0.5">
-                                    <CheckCheck className="w-3.5 h-3.5 text-sky-500" />
-                                  </span>
-                                ) : msg.status === 'delivered' ? (
-                                  <span title="Delivered to device" className="flex items-center ml-0.5">
-                                    <CheckCheck className="w-3.5 h-3.5 text-gray-400" />
-                                  </span>
-                                ) : (
-                                  <span title="Sent" className="flex items-center ml-0.5">
-                                    <Check className="w-3.5 h-3.5 text-gray-400" />
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                            {isOutbound && <MessageStatusTicks status={msg.status} palette="onLight" />}
                           </div>
                         </div>
                       ) : (
@@ -1979,55 +1965,19 @@ export const InboxPage: React.FC = () => {
                             )}
                           >
                             <span>{formatDateTime(msg.createdAt || msg.sentAt)}</span>
-                            {isOutbound && (
-                              <div className="relative inline-flex items-center group">
-                                {msg.status === 'failed' ? (
-                                  <div className="relative flex items-center cursor-pointer">
-                                    <div className="flex items-center gap-1 text-white bg-red-600 hover:bg-red-700 px-1.5 py-0.5 rounded-full shadow-xs transition-colors">
-                                      <AlertCircle className="w-3 h-3 text-white shrink-0 animate-pulse" />
-                                      <span className="text-[9px] font-bold uppercase tracking-wider">Failed</span>
-                                    </div>
-                                    {/* Hover Tooltip Popover */}
-                                    <div className="absolute bottom-full right-0 mb-2 hidden group-hover:flex flex-col w-72 sm:w-80 p-3 bg-gray-950 text-white border-2 border-red-500/80 shadow-2xl rounded-xl z-50 pointer-events-none transition-all duration-200">
-                                      <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-gray-800">
-                                        <div className="flex items-center gap-1.5 text-red-400 font-bold text-xs">
-                                          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                                          <span>Delivery Failed</span>
-                                        </div>
-                                        {(msg.errorCode || msg.error_code) && (
-                                          <span className="px-1.5 py-0.5 bg-red-900 text-red-200 border border-red-700 rounded text-[10px] font-mono font-bold">
-                                            Error #{msg.errorCode || msg.error_code}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-gray-100 mt-2 font-medium leading-relaxed break-words">
-                                        {msg.errorMessage || msg.error_message || (msg.errorCode || msg.error_code ? `Meta Error Code: ${msg.errorCode || msg.error_code}` : 'Message delivery failed. Please verify your WhatsApp channel connection.')}
-                                      </p>
-                                      <div className="flex items-center justify-between text-[10px] text-gray-400 mt-2 pt-1 border-t border-gray-900">
-                                        <span>Status</span>
-                                        <span className="text-red-400 font-bold">Undelivered</span>
-                                      </div>
-                                      {/* Arrow pointer */}
-                                      <div className="absolute top-full right-4 -mt-1 border-4 border-transparent border-t-gray-950" />
-                                    </div>
-                                  </div>
-                                ) : msg.status === 'read' ? (
-                                  <span title="Read by customer" className="flex items-center ml-0.5">
-                                    <CheckCheck className="w-3.5 h-3.5 text-sky-200" />
-                                  </span>
-                                ) : msg.status === 'delivered' ? (
-                                  <span title="Delivered to device" className="flex items-center ml-0.5">
-                                    <CheckCheck className="w-3.5 h-3.5 text-primary-200" />
-                                  </span>
-                                ) : (
-                                  <span title="Sent" className="flex items-center ml-0.5">
-                                    <Check className="w-3.5 h-3.5 text-primary-200" />
-                                  </span>
-                                )}
-                              </div>
-                            )}
+                            {isOutbound && <MessageStatusTicks status={msg.status} palette="onBubble" />}
                           </div>
                         </div>
+                      )}
+
+                      {/* Why it was not delivered: visible without hovering, details on click */}
+                      {isOutbound && msg.status === 'failed' && (
+                        <DeliveryFailureNote
+                          variant="bubble"
+                          code={msg.errorCode || msg.error_code}
+                          message={msg.errorMessage || msg.error_message}
+                          className="mt-1"
+                        />
                       )}
                     </div>
                   );
