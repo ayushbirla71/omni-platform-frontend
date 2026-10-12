@@ -662,6 +662,8 @@ export interface CampaignAnalytics {
   metrics: CampaignMetrics;
   statusBreakdown: Array<{ status: string; count: number }>;
   stepBreakdown: Array<{ step: number; count: number }>;
+  /** Why messages failed, most common first */
+  failureReasons?: Array<{ errorCode: string | null; reason: string; count: number }>;
 }
 
 // Search

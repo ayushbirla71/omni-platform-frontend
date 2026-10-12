@@ -48,6 +48,22 @@ import {
   findTemplateByName,
 } from '../utils/whatsapp-templates';
 
+// How often the page re-reads analytics while messages are still being sent or awaiting receipts
+const LIVE_REFRESH_MS = 10_000;
+
+/** Plain-language hints for the most common WhatsApp Cloud API delivery errors */
+const WHATSAPP_ERROR_HINTS: Record<string, string> = {
+  '131049': 'Meta chose not to deliver this marketing message to protect the recipient (per-user marketing limits). Retrying later or using a utility template can help.',
+  '131026': 'The number is not reachable on WhatsApp (not registered, blocked, or an outdated app version).',
+  '131047': 'The 24-hour customer-service window is closed. Use an approved template message instead.',
+  '131048': 'Spam rate limit hit for this phone number. Slow down sending or improve template quality.',
+  '131056': 'Too many messages to this recipient in a short time (pair rate limit).',
+  '130429': 'Cloud API throughput limit reached. Retry with a lower send rate.',
+  '132000': 'Template parameter count does not match the approved template.',
+  '132001': 'The template does not exist in this language or is not approved.',
+  '132012': 'A template parameter has the wrong format.',
+};
+
 export const CampaignDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -116,6 +132,23 @@ export const CampaignDetailsPage: React.FC = () => {
   useEffect(() => {
     loadRecipients();
   }, [loadRecipients]);
+
+  // Delivery receipts land after the send finishes, so keep the numbers live while any message
+  // is still queued, sending, or accepted-but-unconfirmed. Paused when the tab is hidden.
+  const awaitingUpdates =
+    campaign?.status === 'sending' ||
+    (analytics?.metrics.pendingCount ?? 0) > 0 ||
+    (analytics?.metrics.sentCount ?? 0) > 0;
+
+  useEffect(() => {
+    if (!awaitingUpdates) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      loadData(false);
+      loadRecipients();
+    }, LIVE_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [awaitingUpdates, loadData, loadRecipients]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -555,6 +588,38 @@ export const CampaignDetailsPage: React.FC = () => {
               </div>
             </div>
           </Card>
+
+          {/* Why messages failed */}
+          {(analytics?.failureReasons?.length ?? 0) > 0 && (
+            <Card className="p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600" />
+                <h3 className="text-sm font-bold text-gray-900">Why messages failed</h3>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {analytics!.failureReasons!.map((f) => (
+                  <div key={`${f.errorCode ?? 'none'}-${f.reason}`} className="py-2.5 flex items-start justify-between gap-4">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {f.errorCode && (
+                          <Badge variant="danger" size="sm" className="font-mono">
+                            {f.errorCode}
+                          </Badge>
+                        )}
+                        <p className="text-xs font-semibold text-gray-900 break-words">{f.reason}</p>
+                      </div>
+                      {f.errorCode && WHATSAPP_ERROR_HINTS[f.errorCode] && (
+                        <p className="text-[11px] text-gray-500 leading-relaxed">{WHATSAPP_ERROR_HINTS[f.errorCode]}</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-rose-600 shrink-0">
+                      {f.count} {f.count === 1 ? 'message' : 'messages'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Drip Step Breakdown (if drip campaign) */}
           {campaign.type === 'drip' && analytics?.stepBreakdown && (
