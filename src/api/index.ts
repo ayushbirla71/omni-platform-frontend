@@ -460,6 +460,10 @@ export const knowledgeBasesApi = {
     }
   ) => apiClient.post<KnowledgeDocument>(`/knowledge-bases/${knowledgeBaseId}/documents`, data),
 
+  /** Upload a .md/.markdown/.txt/.pdf file; the server extracts the text and indexes it. */
+  uploadDocument: (knowledgeBaseId: string, formData: FormData) =>
+    apiClient.post<KnowledgeDocument>(`/knowledge-bases/${knowledgeBaseId}/documents/upload`, formData),
+
   deleteDocument: (knowledgeBaseId: string, documentId: string) =>
     apiClient.delete<{ success: boolean }>(`/knowledge-bases/${knowledgeBaseId}/documents/${documentId}`),
 

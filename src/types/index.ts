@@ -528,7 +528,7 @@ export interface PipelineSummary {
 
 // Marketing Campaign
 export type CampaignType = 'broadcast' | 'drip' | 'flow';
-export type CampaignStatus = 'draft' | 'sending' | 'completed' | 'failed';
+export type CampaignStatus = 'draft' | 'sending' | 'completed' | 'partially_failed' | 'failed';
 
 export interface BroadcastDefinition {
   text?: string;
@@ -575,8 +575,13 @@ export interface Campaign {
   definition: BroadcastDefinition | DripDefinition | FlowCampaignDefinition;
   total_recipients?: number;
   totalRecipients?: number;
+  /** Accepted by the provider, delivery receipt still pending */
   sent_count?: number;
   sentCount?: number;
+  delivered_count?: number;
+  deliveredCount?: number;
+  read_count?: number;
+  readCount?: number;
   completed_count?: number;
   completedCount?: number;
   failed_count?: number;
@@ -598,7 +603,7 @@ export interface Campaign {
   updatedAt?: string;
 }
 
-export type CampaignRecipientStatus = 'pending' | 'sent' | 'failed' | 'completed';
+export type CampaignRecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'completed';
 
 export interface CampaignRecipient {
   id: string;
@@ -613,6 +618,10 @@ export interface CampaignRecipient {
   nextSendAt?: string;
   last_error: string | null;
   lastError?: string | null;
+  error_code?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
   updated_at: string;
   updatedAt?: string;
   contact_name?: string | null;
@@ -629,12 +638,21 @@ export interface CampaignRecipient {
 
 export interface CampaignMetrics {
   totalRecipients: number;
+  /** Accepted by the provider, awaiting a delivery receipt */
   sentCount: number;
+  deliveredCount: number;
+  readCount: number;
   completedCount: number;
+  /** Confirmed delivered by the provider (delivered + read) */
   deliveredTotal: number;
+  /** Accepted by the provider at all (sent + delivered + read + completed) */
+  acceptedTotal: number;
   failedCount: number;
   pendingCount: number;
+  /** % confirmed delivered */
   deliveryRate: number;
+  /** % accepted by the provider */
+  acceptedRate: number;
   failureRate: number;
   pendingRate: number;
 }

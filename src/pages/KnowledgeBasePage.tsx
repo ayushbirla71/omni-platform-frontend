@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Brain,
   Database,
@@ -26,6 +26,8 @@ import {
   FileCode,
   Globe,
   ExternalLink,
+  Upload,
+  X,
 } from 'lucide-react';
 import { knowledgeBasesApi, aiCopilotApi } from '../api';
 import type {
@@ -43,6 +45,24 @@ import { Modal } from '../components/common/Modal';
 import { Input } from '../components/common/Input';
 import { Spinner } from '../components/common/Tabs';
 import { formatDateTime, cn } from '../lib/utils';
+
+type DocSourceType = 'text' | 'markdown' | 'pdf' | 'url';
+
+const MAX_DOC_FILE_BYTES = 10 * 1024 * 1024; // keep in sync with backend MAX_DOCUMENT_UPLOAD_BYTES
+const DOC_FILE_EXTENSIONS: Partial<Record<DocSourceType, string[]>> = {
+  markdown: ['.md', '.markdown', '.txt'],
+  pdf: ['.pdf'],
+};
+
+const EMPTY_DOC_FORM = {
+  title: '',
+  source_type: 'text' as DocSourceType,
+  source_url: '',
+  raw_content: '',
+};
+
+const formatFileSize = (bytes: number) =>
+  bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 export const KnowledgeBasePage: React.FC = () => {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -71,12 +91,10 @@ export const KnowledgeBasePage: React.FC = () => {
 
   // Add Document Modal
   const [isDocModalOpen, setIsDocModalOpen] = useState(false);
-  const [docForm, setDocForm] = useState({
-    title: '',
-    source_type: 'text' as 'text' | 'markdown' | 'pdf' | 'url',
-    source_url: '',
-    raw_content: '',
-  });
+  const [docForm, setDocForm] = useState(EMPTY_DOC_FORM);
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [isDocDragOver, setIsDocDragOver] = useState(false);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
 
   // Delete Confirmations
@@ -217,20 +235,88 @@ export const KnowledgeBasePage: React.FC = () => {
     }
   };
 
+  const openDocModal = () => {
+    setDocForm(EMPTY_DOC_FORM);
+    setDocFile(null);
+    setIsDocModalOpen(true);
+  };
+
+  const clearDocFile = () => {
+    setDocFile(null);
+    setDocForm((prev) => ({ ...prev, raw_content: '' }));
+    if (docFileInputRef.current) docFileInputRef.current.value = '';
+  };
+
+  const changeDocSourceType = (sourceType: DocSourceType) => {
+    // A selected file only fits the source type it was chosen for
+    if (docFile) clearDocFile();
+    setDocForm((prev) => ({ ...prev, source_type: sourceType }));
+  };
+
+  const handleDocFileSelect = (file: File) => {
+    const allowed = DOC_FILE_EXTENSIONS[docForm.source_type];
+    if (!allowed) return;
+    const lowerName = file.name.toLowerCase();
+    if (!allowed.some((ext) => lowerName.endsWith(ext))) {
+      showToast(`Unsupported file. Please choose a ${allowed.join(', ')} file`, 'error');
+      return;
+    }
+    if (file.size === 0) {
+      showToast('That file is empty', 'error');
+      return;
+    }
+    if (file.size > MAX_DOC_FILE_BYTES) {
+      showToast(`File is too large (${formatFileSize(file.size)}). Maximum size is 10 MB`, 'error');
+      return;
+    }
+
+    setDocFile(file);
+    setDocForm((prev) => ({
+      ...prev,
+      title: prev.title.trim() ? prev.title : file.name.replace(/\.[^.]+$/, ''),
+      raw_content: '',
+    }));
+
+    // Markdown/text can be previewed locally; a PDF's text is extracted by the server.
+    if (docForm.source_type === 'markdown') {
+      file
+        .text()
+        .then((text) => setDocForm((prev) => ({ ...prev, raw_content: text })))
+        .catch(() => showToast('Could not preview the file, it will still be uploaded', 'error'));
+    }
+  };
+
   const handleAddDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedKb) return;
-    if (!docForm.title.trim() || !docForm.raw_content.trim()) {
-      showToast('Title and content are required', 'error');
+    if (!docForm.title.trim()) {
+      showToast('Title is required', 'error');
+      return;
+    }
+    if (!docFile && !docForm.raw_content.trim()) {
+      showToast(
+        DOC_FILE_EXTENSIONS[docForm.source_type] ? 'Upload a file or paste the content' : 'Content is required',
+        'error'
+      );
       return;
     }
 
     setIsSubmittingDoc(true);
     try {
-      const doc = await knowledgeBasesApi.addDocument(selectedKb.id, docForm);
+      let doc;
+      if (docFile) {
+        const formData = new FormData();
+        formData.append('file', docFile);
+        formData.append('title', docForm.title.trim());
+        formData.append('source_type', docForm.source_type);
+        doc = await knowledgeBasesApi.uploadDocument(selectedKb.id, formData);
+      } else {
+        doc = await knowledgeBasesApi.addDocument(selectedKb.id, docForm);
+      }
       showToast(`Created document with ${(doc as any).chunk_count || (doc as any).chunkCount || 'multiple'} chunks`, 'success');
       setIsDocModalOpen(false);
-      setDocForm({ title: '', source_type: 'text', source_url: '', raw_content: '' });
+      setDocForm(EMPTY_DOC_FORM);
+      setDocFile(null);
       await loadDocuments(selectedKb.id);
       await loadKnowledgeBases(); // refresh chunk count
     } catch (err: any) {
@@ -596,10 +682,7 @@ export const KnowledgeBasePage: React.FC = () => {
                       variant="primary"
                       size="sm"
                       icon={<Plus className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        setDocForm({ title: '', source_type: 'text', source_url: '', raw_content: '' });
-                        setIsDocModalOpen(true);
-                      }}
+                      onClick={openDocModal}
                     >
                       Add Document
                     </Button>
@@ -1000,12 +1083,12 @@ export const KnowledgeBasePage: React.FC = () => {
               <label className="text-xs font-semibold text-gray-700">Source Type</label>
               <select
                 value={docForm.source_type}
-                onChange={(e) => setDocForm({ ...docForm, source_type: e.target.value as any })}
+                onChange={(e) => changeDocSourceType(e.target.value as DocSourceType)}
                 className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="text">Plain Text</option>
                 <option value="markdown">Markdown Documentation</option>
-                <option value="pdf">PDF Content</option>
+                <option value="pdf">PDF Document</option>
                 <option value="url">Web Page / URL</option>
               </select>
             </div>
@@ -1020,9 +1103,80 @@ export const KnowledgeBasePage: React.FC = () => {
             )}
           </div>
 
+          {DOC_FILE_EXTENSIONS[docForm.source_type] && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700">
+                Upload File ({DOC_FILE_EXTENSIONS[docForm.source_type]!.join(', ')}, max 10 MB)
+              </label>
+              <div
+                onClick={() => docFileInputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDocDragOver(true);
+                }}
+                onDragLeave={() => setIsDocDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDocDragOver(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) handleDocFileSelect(file);
+                }}
+                className={cn(
+                  'border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all',
+                  docFile
+                    ? 'border-emerald-500 bg-emerald-50/40'
+                    : isDocDragOver
+                    ? 'border-primary-500 bg-primary-50/40'
+                    : 'border-gray-300 hover:border-primary-500 hover:bg-primary-50/20'
+                )}
+              >
+                <input
+                  ref={docFileInputRef}
+                  type="file"
+                  accept={DOC_FILE_EXTENSIONS[docForm.source_type]!.join(',')}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleDocFileSelect(file);
+                  }}
+                  className="hidden"
+                />
+                {docFile ? (
+                  <div className="flex items-center justify-center gap-3">
+                    <FileText className="w-7 h-7 text-emerald-600 shrink-0" />
+                    <div className="text-left min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate">{docFile.name}</p>
+                      <p className="text-xs text-gray-500">{formatFileSize(docFile.size)} • Click to replace file</p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Remove file"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearDocFile();
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Upload className="w-6 h-6 text-gray-400 mx-auto" />
+                    <p className="text-xs font-semibold text-gray-700">Click to choose a file or drag it here</p>
+                    <p className="text-[11px] text-gray-400">Or paste the content below</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* A PDF's text is extracted on the server, so there is nothing to preview or edit once one is chosen */}
+          {!(docFile && docForm.source_type === 'pdf') && (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-gray-700">Document Content *</label>
+              <label className="text-xs font-semibold text-gray-700">
+                {docFile ? 'File Preview (read-only)' : 'Document Content *'}
+              </label>
               <span className="text-[11px] text-gray-400">
                 {docForm.raw_content.length} chars (~{Math.max(1, Math.ceil(docForm.raw_content.length / 520))} chunks)
               </span>
@@ -1032,10 +1186,15 @@ export const KnowledgeBasePage: React.FC = () => {
               value={docForm.raw_content}
               onChange={(e) => setDocForm({ ...docForm, raw_content: e.target.value })}
               placeholder="Paste the documentation text, FAQ items, policy terms, or product details here..."
-              className="w-full p-3 text-xs bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-gray-800"
-              required
+              readOnly={!!docFile}
+              className={cn(
+                'w-full p-3 text-xs border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-gray-800',
+                docFile ? 'bg-gray-50' : 'bg-white'
+              )}
+              required={!docFile}
             />
           </div>
+          )}
 
           <div className="p-3 bg-blue-50 text-blue-800 rounded-xl text-xs flex items-start gap-2">
             <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />

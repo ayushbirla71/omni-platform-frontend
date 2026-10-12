@@ -222,7 +222,13 @@ export const CampaignsPage: React.FC = () => {
         <div className="space-y-4">
           {filteredCampaigns.map((campaign) => {
             const totalRecipients = campaign.total_recipients || campaign.totalRecipients || 0;
-            const sentCount = campaign.sent_count || campaign.sentCount || 0;
+            // Everything the provider accepted (sent, delivered, read, or a finished drip)
+            const sentCount =
+              (campaign.sent_count || campaign.sentCount || 0) +
+              (campaign.delivered_count || campaign.deliveredCount || 0) +
+              (campaign.read_count || campaign.readCount || 0) +
+              (campaign.completed_count || campaign.completedCount || 0);
+            const failedCount = campaign.failed_count || campaign.failedCount || 0;
             const progressPercent = totalRecipients > 0 ? (sentCount / totalRecipients) * 100 : 0;
             const def: any = campaign.definition || {};
 
@@ -262,13 +268,16 @@ export const CampaignsPage: React.FC = () => {
                           variant={
                             campaign.status === 'completed'
                               ? 'success'
-                              : campaign.status === 'sending'
+                              : campaign.status === 'failed'
+                              ? 'danger'
+                              : campaign.status === 'sending' || campaign.status === 'partially_failed'
                               ? 'warning'
                               : 'secondary'
                           }
                           size="sm"
+                          className="capitalize"
                         >
-                          {campaign.status}
+                          {campaign.status.replace('_', ' ')}
                         </Badge>
                         <Badge
                           variant={
@@ -290,6 +299,7 @@ export const CampaignsPage: React.FC = () => {
                           <Users className="w-3.5 h-3.5 text-gray-400" />
                           <span>
                             {sentCount} / {totalRecipients} recipients
+                            {failedCount > 0 && <span className="text-rose-600 font-semibold"> • {failedCount} failed</span>}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
@@ -307,7 +317,7 @@ export const CampaignsPage: React.FC = () => {
                       </div>
 
                       {/* Progress Bar */}
-                      {totalRecipients > 0 && (campaign.status === 'sending' || campaign.status === 'completed') && (
+                      {totalRecipients > 0 && campaign.status !== 'draft' && (
                         <div className="mt-3 max-w-md">
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div
@@ -315,12 +325,16 @@ export const CampaignsPage: React.FC = () => {
                                 'h-full transition-all duration-300',
                                 campaign.status === 'completed'
                                   ? 'bg-emerald-500'
+                                  : campaign.status === 'failed'
+                                  ? 'bg-rose-500'
+                                  : campaign.status === 'partially_failed'
+                                  ? 'bg-amber-500'
                                   : 'bg-gradient-to-r from-primary-500 to-primary-600'
                               )}
                               style={{ width: `${progressPercent}%` }}
                             />
                           </div>
-                          <p className="text-[10px] text-gray-500 mt-1">{Math.round(progressPercent)}% sent</p>
+                          <p className="text-[10px] text-gray-500 mt-1">{Math.round(progressPercent)}% accepted by provider</p>
                         </div>
                       )}
                     </div>

@@ -220,17 +220,27 @@ export const CampaignDetailsPage: React.FC = () => {
   const metrics = analytics?.metrics || {
     totalRecipients: campaign.total_recipients || campaign.totalRecipients || 0,
     sentCount: campaign.sent_count || campaign.sentCount || 0,
+    deliveredCount: campaign.delivered_count || campaign.deliveredCount || 0,
+    readCount: campaign.read_count || campaign.readCount || 0,
     completedCount: campaign.completed_count || campaign.completedCount || 0,
-    deliveredTotal: (campaign.sent_count || 0) + (campaign.completed_count || 0),
+    deliveredTotal: (campaign.delivered_count || 0) + (campaign.read_count || 0),
+    acceptedTotal:
+      (campaign.sent_count || 0) +
+      (campaign.delivered_count || 0) +
+      (campaign.read_count || 0) +
+      (campaign.completed_count || 0),
     failedCount: campaign.failed_count || campaign.failedCount || 0,
     pendingCount: campaign.pending_count || campaign.pendingCount || 0,
     deliveryRate: 0,
+    acceptedRate: 0,
     failureRate: 0,
     pendingRate: 0,
   };
 
   const total = metrics.totalRecipients || 1;
   const sentPercent = Math.round(((metrics.sentCount || 0) / total) * 100);
+  const deliveredPercent = Math.round(((metrics.deliveredCount || 0) / total) * 100);
+  const readPercent = Math.round(((metrics.readCount || 0) / total) * 100);
   const completedPercent = Math.round(((metrics.completedCount || 0) / total) * 100);
   const pendingPercent = Math.round(((metrics.pendingCount || 0) / total) * 100);
   const failedPercent = Math.round(((metrics.failedCount || 0) / total) * 100);
@@ -256,14 +266,16 @@ export const CampaignDetailsPage: React.FC = () => {
                 variant={
                   campaign.status === 'completed'
                     ? 'success'
-                    : campaign.status === 'sending'
+                    : campaign.status === 'failed'
+                    ? 'danger'
+                    : campaign.status === 'sending' || campaign.status === 'partially_failed'
                     ? 'warning'
                     : 'secondary'
                 }
                 size="md"
                 className="capitalize font-semibold"
               >
-                {campaign.status}
+                {campaign.status.replace('_', ' ')}
               </Badge>
               <Badge
                 variant={
@@ -368,24 +380,26 @@ export const CampaignDetailsPage: React.FC = () => {
           </div>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold text-emerald-600">{metrics.deliveryRate}%</span>
-            <span className="text-xs text-gray-400">success</span>
+            <span className="text-xs text-gray-400">confirmed delivered</span>
           </div>
           <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
             <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${metrics.deliveryRate}%` }} />
           </div>
+          <p className="text-[11px] text-gray-400 mt-1">{metrics.acceptedRate}% accepted by provider</p>
         </Card>
 
         {/* Sent & Delivered */}
         <Card className="p-4 bg-white border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Delivered / Sent</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Delivered</span>
             <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-bold text-indigo-600">{metrics.deliveredTotal.toLocaleString()}</div>
           <p className="text-[11px] text-gray-400 mt-1">
-            {metrics.sentCount} sent {metrics.completedCount > 0 && `• ${metrics.completedCount} completed`}
+            {metrics.readCount} read • {metrics.sentCount} sent, awaiting receipt
+            {metrics.completedCount > 0 && ` • ${metrics.completedCount} completed`}
           </p>
         </Card>
 
@@ -404,7 +418,7 @@ export const CampaignDetailsPage: React.FC = () => {
         {/* Failed / Bounced */}
         <Card className="p-4 bg-white border border-gray-100 shadow-xs hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Failed / Bounced</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Failed</span>
             <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
               <AlertCircle className="w-4 h-4" />
             </div>
@@ -425,16 +439,31 @@ export const CampaignDetailsPage: React.FC = () => {
                 <h3 className="text-sm font-bold text-gray-900">Delivery Execution Funnel</h3>
               </div>
               <span className="text-xs text-gray-400">
-                {metrics.deliveredTotal} of {metrics.totalRecipients} processed
+                {metrics.acceptedTotal} of {metrics.totalRecipients} accepted by provider
+                {metrics.failedCount > 0 && ` • ${metrics.failedCount} failed`}
               </span>
             </div>
 
             {/* Stacked Multi-Color Progress Bar */}
             <div className="space-y-2">
               <div className="h-3 w-full bg-gray-100 rounded-full flex overflow-hidden shadow-inner">
-                {completedPercent > 0 && (
+                {readPercent > 0 && (
+                  <div
+                    className="bg-emerald-700 h-full transition-all duration-500"
+                    style={{ width: `${readPercent}%` }}
+                    title={`Read: ${metrics.readCount} (${readPercent}%)`}
+                  />
+                )}
+                {deliveredPercent > 0 && (
                   <div
                     className="bg-emerald-500 h-full transition-all duration-500"
+                    style={{ width: `${deliveredPercent}%` }}
+                    title={`Delivered: ${metrics.deliveredCount} (${deliveredPercent}%)`}
+                  />
+                )}
+                {completedPercent > 0 && (
+                  <div
+                    className="bg-teal-400 h-full transition-all duration-500"
                     style={{ width: `${completedPercent}%` }}
                     title={`Completed: ${metrics.completedCount} (${completedPercent}%)`}
                   />
@@ -463,12 +492,32 @@ export const CampaignDetailsPage: React.FC = () => {
               </div>
 
               {/* Progress Legend */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-700 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-emerald-900 uppercase">Read</p>
+                    <p className="text-xs font-bold text-emerald-700">
+                      {metrics.readCount} ({readPercent}%)
+                    </p>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-emerald-900 uppercase">Completed</p>
+                    <p className="text-[10px] font-semibold text-emerald-900 uppercase">Delivered</p>
                     <p className="text-xs font-bold text-emerald-700">
+                      {metrics.deliveredCount} ({deliveredPercent}%)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-teal-50/60 border border-teal-100">
+                  <div className="w-2.5 h-2.5 rounded-full bg-teal-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-teal-900 uppercase">Completed</p>
+                    <p className="text-xs font-bold text-teal-700">
                       {metrics.completedCount} ({completedPercent}%)
                     </p>
                   </div>
@@ -477,7 +526,7 @@ export const CampaignDetailsPage: React.FC = () => {
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/60 border border-blue-100">
                   <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-blue-900 uppercase">Sent</p>
+                    <p className="text-[10px] font-semibold text-blue-900 uppercase">Sent (no receipt)</p>
                     <p className="text-xs font-bold text-blue-700">
                       {metrics.sentCount} ({sentPercent}%)
                     </p>
@@ -738,7 +787,7 @@ export const CampaignDetailsPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-              {(['all', 'pending', 'sent', 'completed', 'failed'] as const).map((st) => (
+              {(['all', 'pending', 'sent', 'delivered', 'read', 'completed', 'failed'] as const).map((st) => (
                 <button
                   key={st}
                   onClick={() => {
@@ -836,7 +885,7 @@ export const CampaignDetailsPage: React.FC = () => {
                         ) : (
                           <Badge
                             variant={
-                              rec.status === 'completed'
+                              rec.status === 'completed' || rec.status === 'delivered' || rec.status === 'read'
                                 ? 'success'
                                 : rec.status === 'sent'
                                 ? 'primary'
@@ -848,7 +897,9 @@ export const CampaignDetailsPage: React.FC = () => {
                             className="capitalize font-semibold"
                           >
                             {rec.status === 'pending' && <Clock className="w-3 h-3 animate-pulse" />}
-                            {rec.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
+                            {(rec.status === 'completed' || rec.status === 'delivered' || rec.status === 'read') && (
+                              <CheckCircle2 className="w-3 h-3" />
+                            )}
                             {rec.status === 'sent' && <Send className="w-3 h-3" />}
                             {rec.status}
                           </Badge>
