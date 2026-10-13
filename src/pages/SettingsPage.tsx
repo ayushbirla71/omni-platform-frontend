@@ -58,6 +58,7 @@ import { useDialog } from '../context/DialogContext';
 import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
+import { Input } from '../components/common/Input';
 import { Modal } from '../components/common/Modal';
 import { Tabs, Spinner } from '../components/common/Tabs';
 import { formatRelativeTime, getUserInitials } from '../lib/utils';
@@ -696,12 +697,12 @@ export const SettingsPage: React.FC = () => {
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
                     Current Password
                   </label>
-                  <input
+                  <Input
                     type="password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    className="text-xs"
                   />
                 </div>
 
@@ -710,24 +711,24 @@ export const SettingsPage: React.FC = () => {
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
                       New Password
                     </label>
-                    <input
+                    <Input
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Min. 6 characters"
-                      className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      className="text-xs"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
                       Confirm New Password
                     </label>
-                    <input
+                    <Input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Repeat password"
-                      className="w-full px-3.5 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                      className="text-xs"
                     />
                   </div>
                 </div>

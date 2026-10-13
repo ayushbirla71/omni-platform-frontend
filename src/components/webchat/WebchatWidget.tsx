@@ -70,6 +70,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
 
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -333,7 +334,11 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      // Scroll only the message list; scrollIntoView would also scroll parent containers (e.g. the customize modal)
+      const container = messagesContainerRef.current;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
     }
   }, [messages, agentTyping, isOpen]);
 
@@ -695,7 +700,7 @@ export const WebchatWidget: React.FC<WebchatWidgetProps> = ({
           </form>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/70 dark:bg-slate-900/40">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/70 dark:bg-slate-900/40">
           {/* Greeting message bubble */}
           {config.greetingMessage && (
             <div className="flex items-start space-x-2.5 max-w-[88%]">

@@ -81,6 +81,15 @@ export const authApi = {
 
   updateProfile: (data: UpdateProfileData) =>
     apiClient.patch<UserProfile>('/auth/profile', data),
+
+  forgotPassword: (email: string) =>
+    apiClient.post<{ message: string }>('/auth/forgot-password', { email }),
+
+  validateResetToken: (token: string) =>
+    apiClient.post<{ valid: boolean }>('/auth/reset-password/validate', { token }),
+
+  resetPassword: (token: string, password: string) =>
+    apiClient.post<{ message: string }>('/auth/reset-password', { token, password }),
 };
 
 // ==================== CHANNELS API ====================

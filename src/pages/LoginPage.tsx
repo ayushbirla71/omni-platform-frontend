@@ -84,9 +84,9 @@ export const LoginPage: React.FC = () => {
                 <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="text-primary-600 hover:text-primary-700 font-semibold">
+              <Link to="/forgot-password" className="text-primary-600 hover:text-primary-700 font-semibold">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading} icon={<LogIn className="w-4 h-4" />}>

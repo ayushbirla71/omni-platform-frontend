@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Radio,
   Plus,
@@ -30,6 +30,7 @@ import {
   MessageCircle,
   Palette,
   Code,
+  Search,
 } from 'lucide-react';
 import { channelsApi, whatsappOnboardingApi, flowsApi, webchatApi } from '../api';
 import {
@@ -47,6 +48,7 @@ import { WhatsAppTemplateCreateModal } from '../components/channels/WhatsAppTemp
 import { cn } from '../lib/utils';
 import { getTierInfo, ALL_TIERS } from '../lib/whatsapp-tiers';
 import { useToast } from '../context/ToastContext';
+import { useDebounce } from '../hooks/useDebounce';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -123,6 +125,52 @@ export const ChannelsPage: React.FC = () => {
   const [deepLinkData, setDeepLinkData] = useState<DeepLinkResponse | null>(null);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateStatusFilter, setTemplateStatusFilter] = useState<string>('ALL');
+  const debouncedTemplateSearch = useDebounce(templateSearch, 300);
+
+  const filteredTemplates = useMemo(() => {
+    const q = debouncedTemplateSearch.trim().toLowerCase();
+    return templates.filter((tpl) => {
+      if (templateStatusFilter !== 'ALL' && (tpl.status || '').toUpperCase() !== templateStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const bodyText = tpl.components?.find((c) => c.type === 'BODY')?.text || '';
+      return (
+        tpl.name.toLowerCase().includes(q) ||
+        (tpl.category || '').toLowerCase().includes(q) ||
+        bodyText.toLowerCase().includes(q)
+      );
+    });
+  }, [templates, debouncedTemplateSearch, templateStatusFilter]);
+
+  const templateStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = { ALL: templates.length };
+    templates.forEach((tpl) => {
+      const s = (tpl.status || 'UNKNOWN').toUpperCase();
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [templates]);
+
+  const [expandedTemplates, setExpandedTemplates] = useState<Set<string>>(new Set());
+
+  const toggleTemplateExpanded = (key: string) => {
+    setExpandedTemplates((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const closeTemplatesModal = () => {
+    setIsTemplatesModalOpen(false);
+    setExpandedTemplates(new Set());
+    setTemplateSearch('');
+    setTemplateStatusFilter('ALL');
+  };
 
   // Embedded signup form state
   const [embeddedForm, setEmbeddedForm] = useState({
@@ -1663,7 +1711,7 @@ export const ChannelsPage: React.FC = () => {
       {/* ==================== MODAL: WhatsApp Templates ==================== */}
       <Modal
         isOpen={isTemplatesModalOpen}
-        onClose={() => setIsTemplatesModalOpen(false)}
+        onClose={closeTemplatesModal}
         title={`${activeChannel?.displayName || activeChannel?.display_name || 'WhatsApp'} - Message Templates`}
         description="View approved message templates synchronized with Meta WABA"
         maxWidth="4xl"
@@ -1683,6 +1731,38 @@ export const ChannelsPage: React.FC = () => {
             </Button>
           </div>
 
+          {/* Search + status filter */}
+          <div className="space-y-2">
+            <Input
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              placeholder="Search by name, category or body text..."
+              leftIcon={<Search className="w-4 h-4" />}
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {['ALL', 'APPROVED', 'PENDING', 'REJECTED', 'PAUSED', 'DISABLED'].map((status) => {
+                const count = templateStatusCounts[status] || 0;
+                if (status !== 'ALL' && count === 0 && templateStatusFilter !== status) return null;
+                const isSelected = templateStatusFilter === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setTemplateStatusFilter(status)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors',
+                      isSelected
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                    )}
+                  >
+                    {status === 'ALL' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase()} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="max-h-[500px] overflow-y-auto space-y-3 pr-1">
             {isLoadingTemplates ? (
               <div className="py-16 text-center">
@@ -1695,20 +1775,50 @@ export const ChannelsPage: React.FC = () => {
                 <p className="font-semibold text-gray-600">No message templates found</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">Click "New Template" above to create and submit one to Meta.</p>
               </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="py-12 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                <Search className="w-7 h-7 mx-auto text-gray-300 mb-2" />
+                <p className="font-semibold text-gray-600">No templates match your filters</p>
+                <button
+                  type="button"
+                  className="text-[11px] text-primary-600 hover:underline mt-1"
+                  onClick={() => {
+                    setTemplateSearch('');
+                    setTemplateStatusFilter('ALL');
+                  }}
+                >
+                  Clear filters
+                </button>
+              </div>
             ) : (
-              templates.map((tpl) => {
+              filteredTemplates.map((tpl) => {
                 const headerComp = tpl.components?.find((c) => c.type === 'HEADER');
                 const bodyComp = tpl.components?.find((c) => c.type === 'BODY');
                 const footerComp = tpl.components?.find((c) => c.type === 'FOOTER');
                 const buttonsComp = tpl.components?.find((c) => c.type === 'BUTTONS');
 
+                const templateKey = tpl.id || tpl.name;
+                const isExpanded = expandedTemplates.has(templateKey);
+
                 return (
                   <div
-                    key={tpl.id || tpl.name}
+                    key={templateKey}
                     className="p-4 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/80 shadow-2xs space-y-2.5 transition-all hover:border-gray-300"
                   >
-                    {/* Header line: Name, Category, Language & Status */}
-                    <div className="flex items-start justify-between gap-2">
+                    {/* Header line: Name, Category, Language & Status (click to expand/collapse) */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isExpanded}
+                      onClick={() => toggleTemplateExpanded(templateKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleTemplateExpanded(templateKey);
+                        }
+                      }}
+                      className="flex items-start justify-between gap-2 cursor-pointer select-none"
+                    >
                       <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                         <span className="text-xs font-mono font-bold text-gray-900 dark:text-white">
                           {tpl.name}
@@ -1726,6 +1836,7 @@ export const ChannelsPage: React.FC = () => {
                         )}
                       </div>
 
+                      <div className="flex items-center gap-2 shrink-0">
                       <Badge
                         variant={
                           tpl.status === 'APPROVED'
@@ -1738,8 +1849,17 @@ export const ChannelsPage: React.FC = () => {
                       >
                         {tpl.status}
                       </Badge>
+                        <ChevronDown
+                          className={cn(
+                            'w-4 h-4 text-gray-400 transition-transform duration-200',
+                            isExpanded && 'rotate-180'
+                          )}
+                        />
+                      </div>
                     </div>
 
+                    {isExpanded && (
+                    <>
                     {/* Template Card Content Preview */}
                     <div className="rounded-lg bg-gray-50 dark:bg-slate-900/60 p-3 border border-gray-100 dark:border-slate-700/60 space-y-2">
                       {headerComp && headerComp.format === 'TEXT' && headerComp.text && (
@@ -1779,6 +1899,8 @@ export const ChannelsPage: React.FC = () => {
                         ))}
                       </div>
                     )}
+                    </>
+                    )}
                   </div>
                 );
               })
@@ -1786,7 +1908,7 @@ export const ChannelsPage: React.FC = () => {
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button variant="outline" onClick={() => setIsTemplatesModalOpen(false)}>
+            <Button variant="outline" onClick={closeTemplatesModal}>
               Close
             </Button>
           </div>
