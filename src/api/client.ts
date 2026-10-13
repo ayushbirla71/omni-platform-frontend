@@ -3,6 +3,8 @@ const API_BASE_URL = '/api';
 interface ApiRequestOptions extends RequestInit {
   params?: Record<string, string | number | boolean | undefined | null>;
   skipAuthRedirect?: boolean;
+  /** 'blob' for file downloads (e.g. Excel exports); defaults to 'json'. */
+  responseType?: 'json' | 'blob';
 }
 
 class ApiClient {
@@ -46,7 +48,7 @@ class ApiClient {
   }
 
   async request<T>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
-    const { params, ...fetchOptions } = options;
+    const { params, responseType, ...fetchOptions } = options;
 
     const headers: Record<string, string> = {
       ...(fetchOptions.headers as Record<string, string>),
@@ -101,6 +103,10 @@ class ApiClient {
     // Handle 204 No Content
     if (response.status === 204) {
       return undefined as T;
+    }
+
+    if (responseType === 'blob') {
+      return (await response.blob()) as T;
     }
 
     return response.json();

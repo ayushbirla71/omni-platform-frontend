@@ -33,11 +33,14 @@ import {
   Image as ImageIcon,
   Video,
   Phone,
+  Download,
 } from 'lucide-react';
 import { campaignsApi, channelsApi } from '../api';
 import type { Campaign, CampaignRecipient, CampaignAnalytics, WhatsAppTemplate } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useDialog } from '../context/DialogContext';
+import { useAuth } from '../context/AuthContext';
+import { downloadBlob } from '../utils/download';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -59,6 +62,8 @@ export const CampaignDetailsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { confirm } = useDialog();
+  const { user } = useAuth();
+  const canExportResponses = user?.role === 'owner' || user?.role === 'admin';
 
   const [analytics, setAnalytics] = useState<CampaignAnalytics | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
@@ -71,6 +76,7 @@ export const CampaignDetailsPage: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Recipient filters & pagination
@@ -167,6 +173,21 @@ export const CampaignDetailsPage: React.FC = () => {
       showToast(err?.message || 'Failed to send campaign', 'error');
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleExportResponses = async () => {
+    if (!id || !campaign) return;
+    setIsExporting(true);
+    try {
+      const file = await campaignsApi.exportResponses(id);
+      const slug = campaign.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      downloadBlob(file, `campaign-${slug || 'export'}-responses.xlsx`);
+      showToast('Responses exported to Excel', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to export responses', 'error');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -346,6 +367,18 @@ export const CampaignDetailsPage: React.FC = () => {
           >
             Refresh
           </Button>
+
+          {canExportResponses && def.flowId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportResponses}
+              isLoading={isExporting}
+              icon={<Download className="w-3.5 h-3.5 text-emerald-600" />}
+            >
+              Export responses (Excel)
+            </Button>
+          )}
 
           {campaign.type === 'flow' && def.flowId && (
             <Link to={`/flows/${def.flowId}`}>

@@ -290,6 +290,10 @@ export const campaignsApi = {
   sendBroadcast: (id: string) => apiClient.post<{ sent: number; failed: number }>(`/campaigns/${id}/send`),
 
   delete: (id: string) => apiClient.delete<void>(`/campaigns/${id}`),
+
+  /** Excel file: one row per recipient with their flow question answers. Owner/admin only. */
+  exportResponses: (id: string) =>
+    apiClient.get<Blob>(`/campaigns/${id}/export`, undefined, { responseType: 'blob' }),
 };
 
 // ==================== SEARCH API ====================
