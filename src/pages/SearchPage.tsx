@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   Search,
@@ -30,37 +30,54 @@ export const SearchPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'all' | 'messages' | 'contacts'>('all');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const latestRequestId = useRef(0);
 
   const { showToast } = useToast();
 
-  const handleSearch = async (searchTerm: string) => {
-    if (!searchTerm.trim()) {
-      setResults(null);
-      return;
-    }
+  const runSearch = useCallback(
+    async (searchTerm: string) => {
+      const requestId = ++latestRequestId.current;
+      setIsLoading(true);
+      setHasError(false);
+      try {
+        const data = await searchApi.search(searchTerm);
+        if (requestId !== latestRequestId.current) return;
+        setResults(data);
+      } catch (err) {
+        if (requestId !== latestRequestId.current) return;
+        setResults(null);
+        setHasError(true);
+        showToast('Search failed or Elasticsearch unavailable', 'error');
+      } finally {
+        if (requestId === latestRequestId.current) setIsLoading(false);
+      }
+    },
+    [showToast]
+  );
 
-    setIsLoading(true);
-    try {
-      const data = await searchApi.search(searchTerm.trim());
-      setResults(data);
-      setSearchParams({ q: searchTerm.trim() });
-    } catch (err) {
-      showToast('Search failed or Elasticsearch unavailable', 'error');
-    } finally {
+  // The URL (?q=) is the single trigger for fetching, so typing + submit and the topbar
+  // search box both go through here exactly once per query.
+  useEffect(() => {
+    setQuery(queryParam);
+    if (queryParam) {
+      runSearch(queryParam);
+    } else {
+      latestRequestId.current++;
+      setResults(null);
+      setHasError(false);
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (queryParam) {
-      setQuery(queryParam);
-      handleSearch(queryParam);
-    }
-  }, [queryParam]);
+  }, [queryParam, runSearch]);
 
   const onFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSearch(query);
+    const term = query.trim();
+    if (term === queryParam) {
+      if (term) runSearch(term);
+      return;
+    }
+    setSearchParams(term ? { q: term } : {});
   };
 
   const totalMessages = results?.messages?.length || 0;
@@ -150,6 +167,17 @@ export const SearchPage: React.FC = () => {
         <div className="py-20 flex justify-center">
           <Spinner size="lg" />
         </div>
+      ) : hasError ? (
+        <Card className="p-12 text-center space-y-3">
+          <Inbox className="w-12 h-12 mx-auto text-gray-300" />
+          <h3 className="text-base font-bold text-gray-900">Search is unavailable right now</h3>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            We couldn't reach the search service. Please try again in a moment.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => runSearch(queryParam)}>
+            Try again
+          </Button>
+        </Card>
       ) : !results ? (
         <div className="py-20 text-center text-gray-400 text-xs space-y-3">
           <Search className="w-12 h-12 mx-auto opacity-20 text-gray-500" />
@@ -161,6 +189,18 @@ export const SearchPage: React.FC = () => {
           <h3 className="text-base font-bold text-gray-900">No matching results found</h3>
           <p className="text-xs text-gray-500 max-w-sm mx-auto">
             We couldn't find any messages or contacts matching "{query}". Try searching for different keywords.
+          </p>
+        </Card>
+      ) : (activeTab === 'messages' && totalMessages === 0) ||
+        (activeTab === 'contacts' && totalContacts === 0) ? (
+        <Card className="p-12 text-center space-y-3">
+          <Inbox className="w-12 h-12 mx-auto text-gray-300" />
+          <h3 className="text-base font-bold text-gray-900">
+            No matching {activeTab === 'messages' ? 'messages' : 'contacts'}
+          </h3>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            Nothing in {activeTab === 'messages' ? 'chat transcripts' : 'contacts'} matches "{queryParam}".
+            Check the other tab for matches.
           </p>
         </Card>
       ) : (
@@ -232,8 +272,15 @@ export const SearchPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                      <Badge variant="success" size="sm" className="capitalize">
-                        {contact.channel || 'whatsapp'}
+                      <Badge
+                        variant={contact.channelType === 'whatsapp' ? 'success' : 'secondary'}
+                        size="sm"
+                        className="capitalize max-w-[180px] truncate"
+                        title={contact.channelName || contact.channelType}
+                      >
+                        {contact.channelType === 'webchat' && contact.channelName
+                          ? `webchat · ${contact.channelName}`
+                          : contact.channelType}
                       </Badge>
 
                       <Link to="/contacts">

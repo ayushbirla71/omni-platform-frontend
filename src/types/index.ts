@@ -693,14 +693,14 @@ export interface SearchResults {
     conversationId: string;
     text: string;
     direction: MessageDirection;
-    createdAt: string;
+    createdAt: string | null;
   }>;
   contacts: Array<{
     id: string;
     name: string | null;
     externalId: string;
-    channelType?: ChannelType;
-    channel?: string;
+    channelType: ChannelType;
+    channelName: string | null;
   }>;
 }
 
