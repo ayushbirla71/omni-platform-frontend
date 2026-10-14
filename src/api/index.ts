@@ -16,6 +16,9 @@ import type {
   SpreadsheetPreview,
   ImportContactsResult,
   Conversation,
+  ConversationListParams,
+  ConversationStatus,
+  Team,
   Message,
   Flow,
   FlowDefinition,
@@ -194,8 +197,8 @@ export const contactsApi = {
 
 // ==================== CONVERSATIONS API ====================
 export const conversationsApi = {
-  list: (status?: 'open' | 'closed') =>
-    apiClient.get<Conversation[]>('/conversations', status ? { status } : undefined),
+  list: (params?: ConversationListParams) =>
+    apiClient.get<Conversation[]>('/conversations', params && { ...params }),
 
   get: (conversationId: string) =>
     apiClient.get<Conversation>(`/conversations/${conversationId}`),
@@ -222,10 +225,19 @@ export const conversationsApi = {
     }
   ) => apiClient.post<Message>(`/conversations/${conversationId}/template`, data),
 
-  assignAgent: (conversationId: string, agentUserId: string) =>
+  /** Pass null to unassign. */
+  assignAgent: (conversationId: string, agentUserId: string | null) =>
     apiClient.post<void>(`/conversations/${conversationId}/assign`, { agentUserId }),
 
-  updateStatus: (conversationId: string, status: 'open' | 'pending' | 'closed') =>
+  /** Pass null to clear the team. */
+  assignTeam: (conversationId: string, teamId: string | null) =>
+    apiClient.post<void>(`/conversations/${conversationId}/team`, { teamId }),
+
+  /** Take an unassigned case for yourself; fails with 409 if another agent holds it. */
+  claim: (conversationId: string) =>
+    apiClient.post<void>(`/conversations/${conversationId}/claim`),
+
+  updateStatus: (conversationId: string, status: ConversationStatus) =>
     apiClient.patch<void>(`/conversations/${conversationId}/status`, { status }),
 
   resumeBot: (conversationId: string) =>
@@ -299,6 +311,10 @@ export const campaignsApi = {
   sendBroadcast: (id: string) => apiClient.post<{ sent: number; failed: number }>(`/campaigns/${id}/send`),
 
   delete: (id: string) => apiClient.delete<void>(`/campaigns/${id}`),
+
+  /** Excel file: one row per recipient with their flow question answers. Owner/admin only. */
+  exportResponses: (id: string) =>
+    apiClient.get<Blob>(`/campaigns/${id}/export`, undefined, { responseType: 'blob' }),
 };
 
 // ==================== SEARCH API ====================
@@ -528,6 +544,22 @@ export const teamApi = {
 
   remove: (id: string) =>
     apiClient.delete<{ message: string; id: string }>(`/team/${id}`),
+};
+
+// ==================== SUPPORT TEAMS API ====================
+export const teamsApi = {
+  list: () => apiClient.get<Team[]>('/teams'),
+
+  create: (data: { name: string; description?: string }) =>
+    apiClient.post<Team>('/teams', data),
+
+  update: (id: string, data: { name: string; description?: string }) =>
+    apiClient.patch<Team>(`/teams/${id}`, data),
+
+  remove: (id: string) => apiClient.delete<void>(`/teams/${id}`),
+
+  setMembers: (id: string, userIds: string[]) =>
+    apiClient.put<Team>(`/teams/${id}/members`, { userIds }),
 };
 
 // ==================== DEVELOPER API KEYS API ====================

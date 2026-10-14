@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   MessageSquare,
@@ -36,10 +36,23 @@ import {
   Bot,
   PanelRightClose,
 } from 'lucide-react';
-import { conversationsApi, contactsApi, dealsApi, ordersApi, aiCopilotApi, channelsApi } from '../api';
+import {
+  conversationsApi,
+  contactsApi,
+  dealsApi,
+  ordersApi,
+  aiCopilotApi,
+  channelsApi,
+  teamApi,
+  teamsApi,
+} from '../api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type {
   Conversation,
+  ConversationListParams,
+  ConversationStatus,
+  Team,
+  TeamMember,
   Message,
   Contact,
   Deal,
@@ -56,6 +69,7 @@ import { Spinner } from '../components/common/Tabs';
 import { Modal } from '../components/common/Modal';
 import { DeliveryFailureNote } from '../components/common/DeliveryFailureNote';
 import { MessageStatusTicks } from '../components/chat/MessageStatusTicks';
+import { ConversationActions } from '../components/inbox/ConversationActions';
 import { Input } from '../components/common/Input';
 import { formatDateTime, formatRelativeTime, cn } from '../lib/utils';
 import { WhatsAppTemplateCard } from '../components/chat/WhatsAppTemplateCard';
@@ -73,7 +87,11 @@ export const InboxPage: React.FC = () => {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
 
-  const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | ConversationStatus>('all');
+  const [scopeFilter, setScopeFilter] = useState<'everyone' | 'mine' | 'unassigned'>('everyone');
+  const [teamFilter, setTeamFilter] = useState<string>('all');
+  const [assignees, setAssignees] = useState<TeamMember[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState<string>('all');
   const [messageText, setMessageText] = useState('');
@@ -234,11 +252,62 @@ export const InboxPage: React.FC = () => {
     if (stickToBottomRef.current) scrollToBottom('auto');
   };
 
+  // Server-side list filters: status tab, Mine / Unassigned, and team
+  const listParams = useMemo<ConversationListParams>(
+    () => ({
+      status: filterStatus === 'all' ? undefined : filterStatus,
+      assignedTo: scopeFilter === 'mine' ? 'me' : scopeFilter === 'unassigned' ? 'unassigned' : undefined,
+      teamId: teamFilter === 'all' ? undefined : teamFilter,
+    }),
+    [filterStatus, scopeFilter, teamFilter]
+  );
+
+  // Latest values for realtime handlers, which outlive a render
+  const listParamsRef = useRef(listParams);
+  listParamsRef.current = listParams;
+  const conversationsRef = useRef<Conversation[]>([]);
+  conversationsRef.current = conversations;
+
+  // Re-reads the list without the loading spinner (after an action or a realtime change)
+  const refreshConversations = useCallback(async () => {
+    try {
+      setConversations(await conversationsApi.list(listParamsRef.current));
+    } catch {
+      // Non-fatal: the 15-second poll retries
+    }
+  }, []);
+
+  // Close/assign changed the open conversation: refresh the list and the conversation itself,
+  // because a status/assignee filter may now hide it from the list.
+  const handleConversationChanged = async () => {
+    await refreshConversations();
+    if (!selectedConvId) return;
+    try {
+      setActiveConversation(await conversationsApi.get(selectedConvId));
+    } catch {
+      // Non-fatal: the next realtime update or poll refreshes it
+    }
+  };
+
+  // Agents and teams for the assign menus
+  useEffect(() => {
+    teamApi
+      .list()
+      .then((members) =>
+        setAssignees(members.filter((m) => m.status === 'active' && m.role !== 'viewer'))
+      )
+      .catch(() => showToast('Could not load team members for assignment', 'error'));
+    teamsApi
+      .list()
+      .then(setTeams)
+      .catch(() => showToast('Could not load support teams', 'error'));
+  }, []);
+
   // Load conversations list
   const loadConversations = async () => {
     setIsLoadingList(true);
     try {
-      const data = await conversationsApi.list(filterStatus === 'all' ? undefined : filterStatus);
+      const data = await conversationsApi.list(listParams);
       setConversations(data);
 
       if (data.length > 0 && !selectedConvId && typeof window !== 'undefined' && window.innerWidth >= 768) {
@@ -253,7 +322,7 @@ export const InboxPage: React.FC = () => {
 
   useEffect(() => {
     loadConversations();
-  }, [filterStatus]);
+  }, [listParams]);
 
   // Keep active conversation updated from list when conversations list refreshes
   useEffect(() => {
@@ -492,6 +561,17 @@ export const InboxPage: React.FC = () => {
       const conv = evt.data;
       if (!conv?.id) return;
 
+      // A status/assignment change can move the conversation in or out of a filtered tab
+      const before = conversationsRef.current.find((c) => c.id === conv.id);
+      const placementChanged =
+        !before ||
+        before.status !== conv.status ||
+        (before.assignedAgentUserId ?? null) !== (conv.assignedAgentUserId ?? null) ||
+        (before.assignedTeamId ?? null) !== (conv.assignedTeamId ?? null);
+      if (placementChanged && Object.values(listParamsRef.current).some(Boolean)) {
+        refreshConversations();
+      }
+
       setConversations((prev) =>
         prev.map((c) => (c.id === conv.id ? { ...c, ...conv } : c))
       );
@@ -505,13 +585,13 @@ export const InboxPage: React.FC = () => {
       unbindMsgStatus();
       unbindConvUpdate();
     };
-  }, [selectedConvId, onRealtimeEvent]);
+  }, [selectedConvId, onRealtimeEvent, refreshConversations]);
 
   // Periodic background polling fallback for live incoming messages (15s resilient heartbeat)
   useEffect(() => {
     const pollInterval = setInterval(async () => {
       try {
-        const convList = await conversationsApi.list(filterStatus === 'all' ? undefined : filterStatus);
+        const convList = await conversationsApi.list(listParams);
         setConversations(convList);
       } catch {}
 
@@ -529,7 +609,7 @@ export const InboxPage: React.FC = () => {
     }, 15000);
 
     return () => clearInterval(pollInterval);
-  }, [selectedConvId, filterStatus]);
+  }, [selectedConvId, listParams]);
 
   // Helper to format countdown seconds into HH:MM:SS
   const formatCountdown = (secs: number | null) => {
@@ -949,6 +1029,11 @@ export const InboxPage: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Radio className="w-3.5 h-3.5 text-gray-400" />
                   <span className="capitalize">{activeConversation.channelType}</span>
+                  {activeConversation.channelDisplayName && (
+                    <span className="truncate" title={activeConversation.channelDisplayName}>
+                      · {activeConversation.channelDisplayName}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Phone className="w-3.5 h-3.5 text-gray-400" />
@@ -1496,7 +1581,7 @@ export const InboxPage: React.FC = () => {
 
           {/* Status & Channel Filters */}
           <div className="flex items-center gap-1.5 pt-1">
-            {(['all', 'open', 'closed'] as const).map((status) => (
+            {(['all', 'open', 'pending', 'closed'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -1521,6 +1606,40 @@ export const InboxPage: React.FC = () => {
               <option value="telegram">Telegram</option>
               <option value="webchat">Live Webchat</option>
             </select>
+          </div>
+
+          {/* Ownership filters: who holds the case, and which team it is routed to */}
+          <div className="flex items-center gap-1.5">
+            {(['everyone', 'mine', 'unassigned'] as const).map((scope) => (
+              <button
+                key={scope}
+                onClick={() => setScopeFilter(scope)}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-semibold rounded-lg capitalize transition-colors',
+                  scopeFilter === scope
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                )}
+              >
+                {scope}
+              </button>
+            ))}
+
+            {teams.length > 0 && (
+              <select
+                value={teamFilter}
+                onChange={(e) => setTeamFilter(e.target.value)}
+                aria-label="Filter by team"
+                className="ml-auto text-[11px] bg-gray-100 font-semibold text-gray-700 px-2 py-1 rounded-lg border-0 focus:ring-1 focus:ring-primary-500 cursor-pointer"
+              >
+                <option value="all">All Teams</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -1588,18 +1707,32 @@ export const InboxPage: React.FC = () => {
 
                     <div className="flex items-center gap-1.5 mt-2">
                       <Badge
-                        variant={conv.status === 'open' ? 'success' : 'secondary'}
+                        variant={
+                          conv.status === 'open' ? 'success' : conv.status === 'pending' ? 'warning' : 'secondary'
+                        }
                         size="sm"
                         className="text-[10px] px-1.5 py-0"
                       >
-                        {conv.status}
+                        {conv.status === 'pending' ? 'needs agent' : conv.status}
                       </Badge>
                       {conv.channelDisplayName && (
-                        <span className="text-[10px] text-gray-400 truncate">
+                        <span
+                          title={conv.channelDisplayName}
+                          className={cn(
+                            'text-[10px] truncate',
+                            conv.channelType === 'webchat'
+                              ? 'px-1.5 py-0 rounded border bg-indigo-50 text-indigo-700 border-indigo-200 font-medium'
+                              : 'text-gray-400'
+                          )}
+                        >
                           {conv.channelDisplayName}
                         </span>
                       )}
                     </div>
+                    <p className="text-[10px] text-gray-500 truncate mt-1">
+                      {conv.assignedAgentName ? `Agent: ${conv.assignedAgentName}` : 'Unassigned'}
+                      {conv.assignedTeamName && ` · Team: ${conv.assignedTeamName}`}
+                    </p>
                   </div>
                 </div>
               );
@@ -1654,7 +1787,17 @@ export const InboxPage: React.FC = () => {
                         activeConversation.channelType === 'webchat' && "bg-indigo-50 text-indigo-700 border-indigo-200"
                       )}
                     >
-                      {activeConversation.channelType === 'webchat' ? 'Live Webchat' : activeConversation.channelType}
+                      {activeConversation.channelType === 'webchat' ? (
+                        <span
+                          className="block max-w-[180px] sm:max-w-[280px] truncate"
+                          title={activeConversation.channelDisplayName || 'Live Webchat'}
+                        >
+                          Live Webchat
+                          {activeConversation.channelDisplayName && ` · ${activeConversation.channelDisplayName}`}
+                        </span>
+                      ) : (
+                        activeConversation.channelType
+                      )}
                     </Badge>
                   </div>
                   <p className="text-[10px] sm:text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5 truncate">
@@ -1702,6 +1845,13 @@ export const InboxPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            <ConversationActions
+              conversation={activeConversation}
+              assignees={assignees}
+              teams={teams}
+              onChanged={handleConversationChanged}
+            />
 
             {/* Messages Feed */}
             <div
@@ -2062,7 +2212,15 @@ export const InboxPage: React.FC = () => {
                 accept="image/*,video/*,audio/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx,.zip"
               />
 
-              {activeConversation.channelType === 'whatsapp' && sessionSecondsLeft === 0 ? (
+              {activeConversation.status === 'closed' ? (
+                <div className="flex items-center gap-2.5 p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-700">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>
+                    <span className="font-semibold">This case is closed.</span> Use <strong>Reopen</strong> above to
+                    reply. If the customer writes again, this same case reopens automatically.
+                  </span>
+                </div>
+              ) : activeConversation.channelType === 'whatsapp' && sessionSecondsLeft === 0 ? (
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-rose-50/90 border border-rose-200 rounded-xl">
                   <div className="flex items-center gap-2.5 text-rose-800 text-xs">
                     <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
