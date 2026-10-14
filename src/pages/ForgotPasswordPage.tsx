@@ -39,7 +39,13 @@ export const ForgotPasswordPage: React.FC = () => {
       setCooldown(RESEND_COOLDOWN_SECONDS);
       return true;
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to send reset link', 'error');
+      const message = err instanceof Error ? err.message : 'Failed to send reset link';
+      if (/deactivated/i.test(message)) {
+        setIsSent(false);
+        setError(message);
+      } else {
+        showToast(message, 'error');
+      }
       return false;
     } finally {
       setIsLoading(false);

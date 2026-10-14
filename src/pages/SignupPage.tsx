@@ -11,6 +11,7 @@ export const SignupPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{
     tenantName?: string;
@@ -37,7 +38,7 @@ export const SignupPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!acceptedTerms || !validate()) return;
 
     setIsLoading(true);
     try {
@@ -154,19 +155,35 @@ export const SignupPage: React.FC = () => {
               autoComplete="new-password"
             />
 
-            <div className="text-xs text-gray-500 pt-2">
-              By signing up, you agree to our{' '}
-              <Link to="/terms" className="text-primary-600 hover:text-primary-700 font-semibold underline">
-                Terms of Service
-              </Link>{' '}
-              and{' '}
-              <Link to="/privacy" className="text-primary-600 hover:text-primary-700 font-semibold underline">
-                Privacy Policy
-              </Link>
-              .
+            <div className="flex items-start gap-2 text-xs text-gray-500 pt-2">
+              <input
+                id="accept-terms"
+                type="checkbox"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+              />
+              <label htmlFor="accept-terms">
+                By signing up, you agree to our{' '}
+                <Link to="/terms" className="text-primary-600 hover:text-primary-700 font-semibold underline">
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link to="/privacy" className="text-primary-600 hover:text-primary-700 font-semibold underline">
+                  Privacy Policy
+                </Link>
+                .
+              </label>
             </div>
 
-            <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full"
+              isLoading={isLoading}
+              disabled={!acceptedTerms || isLoading}
+            >
               Create Account
             </Button>
           </form>
