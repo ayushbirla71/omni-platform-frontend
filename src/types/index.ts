@@ -227,7 +227,24 @@ export interface ImportContactsResult {
 }
 
 // Conversation
-export type ConversationStatus = 'open' | 'closed';
+export type ConversationStatus = 'open' | 'pending' | 'closed';
+
+/** A support team conversations can be routed to (e.g. "Support", "Sales"). */
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  memberIds: string[];
+  created_at?: string;
+}
+
+/** Filters the inbox list is fetched with; resolved on the server. */
+export interface ConversationListParams {
+  status?: ConversationStatus;
+  /** 'me', 'unassigned' or a user id */
+  assignedTo?: string;
+  teamId?: string;
+}
 
 export interface SessionWindow {
   isOpen: boolean;
@@ -255,6 +272,9 @@ export interface Conversation {
   contact_external_id?: string;
   assignedAgentUserId?: string | null;
   assigned_agent_id?: string | null;
+  assignedAgentName?: string | null;
+  assignedTeamId?: string | null;
+  assignedTeamName?: string | null;
   status: ConversationStatus;
   lastMessageAt?: string | null;
   last_message_at?: string | null;

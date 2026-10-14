@@ -55,6 +55,7 @@ import type {
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../context/DialogContext';
+import { TeamsManager } from '../components/settings/TeamsManager';
 import { Card, CardHeader, CardTitle, CardDescription } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
@@ -953,6 +954,11 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
           </Card>
+
+          <TeamsManager
+            members={teamMembers}
+            canManage={user?.role === 'owner' || user?.role === 'admin'}
+          />
         </div>
       )}
 
