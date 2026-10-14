@@ -1029,6 +1029,11 @@ export const InboxPage: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Radio className="w-3.5 h-3.5 text-gray-400" />
                   <span className="capitalize">{activeConversation.channelType}</span>
+                  {activeConversation.channelDisplayName && (
+                    <span className="truncate" title={activeConversation.channelDisplayName}>
+                      · {activeConversation.channelDisplayName}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Phone className="w-3.5 h-3.5 text-gray-400" />
@@ -1711,7 +1716,15 @@ export const InboxPage: React.FC = () => {
                         {conv.status === 'pending' ? 'needs agent' : conv.status}
                       </Badge>
                       {conv.channelDisplayName && (
-                        <span className="text-[10px] text-gray-400 truncate">
+                        <span
+                          title={conv.channelDisplayName}
+                          className={cn(
+                            'text-[10px] truncate',
+                            conv.channelType === 'webchat'
+                              ? 'px-1.5 py-0 rounded border bg-indigo-50 text-indigo-700 border-indigo-200 font-medium'
+                              : 'text-gray-400'
+                          )}
+                        >
                           {conv.channelDisplayName}
                         </span>
                       )}
@@ -1774,7 +1787,17 @@ export const InboxPage: React.FC = () => {
                         activeConversation.channelType === 'webchat' && "bg-indigo-50 text-indigo-700 border-indigo-200"
                       )}
                     >
-                      {activeConversation.channelType === 'webchat' ? 'Live Webchat' : activeConversation.channelType}
+                      {activeConversation.channelType === 'webchat' ? (
+                        <span
+                          className="block max-w-[180px] sm:max-w-[280px] truncate"
+                          title={activeConversation.channelDisplayName || 'Live Webchat'}
+                        >
+                          Live Webchat
+                          {activeConversation.channelDisplayName && ` · ${activeConversation.channelDisplayName}`}
+                        </span>
+                      ) : (
+                        activeConversation.channelType
+                      )}
                     </Badge>
                   </div>
                   <p className="text-[10px] sm:text-[11px] text-gray-500 flex items-center gap-1.5 mt-0.5 truncate">
