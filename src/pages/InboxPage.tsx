@@ -2194,7 +2194,7 @@ export const InboxPage: React.FC = () => {
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                   <span>
                     <span className="font-semibold">This case is closed.</span> Use <strong>Reopen</strong> above to
-                    reply. A new message from the customer starts a new case.
+                    reply. If the customer writes again, this same case reopens automatically.
                   </span>
                 </div>
               ) : activeConversation.channelType === 'whatsapp' && sessionSecondsLeft === 0 ? (
