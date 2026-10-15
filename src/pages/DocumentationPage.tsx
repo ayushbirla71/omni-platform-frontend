@@ -418,6 +418,15 @@ export const DocumentationPage: React.FC = () => {
             train AI Copilot with your documents, construct visual automation flows, broadcast campaigns, and scale your sales pipeline.
           </p>
 
+          <Link
+            to="/documentation/user-manual"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-slate-900 text-sm font-semibold hover:bg-primary-50 transition-colors"
+          >
+            <BookOpen className="w-4 h-4 text-primary-600" />
+            Open the step-by-step User Manual
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+
           {/* Real-time Search Box */}
           <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
             <div className="relative flex-1 w-full">

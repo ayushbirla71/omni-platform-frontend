@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -31,6 +31,7 @@ import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsPage } from './pages/TermsPage';
 import { DataDeletionPage } from './pages/DataDeletionPage';
 import { WebchatStandalonePage } from './pages/WebchatStandalonePage';
+import { UserManualPage } from './pages/UserManualPage';
 import { Spinner } from './components/common/Tabs';
 
 // Protected Route wrapper
@@ -69,6 +70,21 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   return <>{children}</>;
+};
+
+// Public page that adopts the app shell (sidebar/topbar) when the visitor is logged in
+const AuthAwareLayout: React.FC = () => {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  return isAuthenticated ? <AppLayout /> : <Outlet />;
 };
 
 function App() {
@@ -124,6 +140,13 @@ function App() {
             <Route path="/documentation" element={<DocumentationPage />} />
             <Route path="/guide" element={<DocumentationPage />} />
             <Route path="/manual" element={<DocumentationPage />} />
+
+            {/* User Manual: public, rendered inside the app shell when logged in */}
+            <Route element={<AuthAwareLayout />}>
+              <Route path="/documentation/user-manual" element={<UserManualPage />} />
+              <Route path="/documentation/user-manual/:chapter" element={<UserManualPage />} />
+              <Route path="/user-manual" element={<Navigate to="/documentation/user-manual" replace />} />
+            </Route>
 
             {/* Public Live Webchat Standalone Route */}
             <Route path="/chat/:widgetKey" element={<WebchatStandalonePage />} />

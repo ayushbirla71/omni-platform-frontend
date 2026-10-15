@@ -20,6 +20,7 @@ import {
   BarChart3,
   LifeBuoy,
   BookOpen,
+  BookMarked,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { cn, getUserInitials } from '../../lib/utils';
@@ -41,6 +42,7 @@ export const Sidebar: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ is
     { name: 'Analytics & Infra', href: '/analytics', icon: BarChart3 },
     { name: 'AI Knowledge Base', href: '/knowledge-bases', icon: Brain },
     { name: 'Documentation & Guide', href: '/docs', icon: BookOpen },
+    { name: 'User Manual', href: '/documentation/user-manual', icon: BookMarked },
     { name: 'Support & Helpdesk', href: '/support', icon: LifeBuoy },
     { name: 'Settings & Scale', href: '/settings', icon: Settings },
     { name: 'Global Search', href: '/search', icon: Search },

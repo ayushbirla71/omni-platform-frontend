@@ -17,3 +17,13 @@
     display: none;
   }
 }
+
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
